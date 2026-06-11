@@ -674,7 +674,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         };
 
         // 2. Generate and Upload F1
-        setSaveProgress('Membuat Dokumen PDF Form Pengajuan (F1)...');
+        setSaveProgress('Membuat Dokumen PDF Bukti Pengeluaran Kas/Bank (F1)...');
         const f1PdfBytes = await generateF1PdfBytes(tempSubmissionForPdf, calculatedGrandTotal);
         setSaveProgress('Mengunggah Dokumen F1 ke Google Drive...');
         const f1Data = await uploadFileToFolder(`F1 - ${cleanJenis} - ${cleanPenerima}.pdf`, 'application/pdf', f1PdfBytes, targetFolderId);
@@ -685,7 +685,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         });
 
         // 3. Generate and Upload F2
-        setSaveProgress('Membuat Dokumen PDF Kuitansi (F2)...');
+        setSaveProgress('Membuat Dokumen PDF Form Pengajuan HO (F2)...');
         const f2PdfBytes = await generateF2PdfBytes(tempSubmissionForPdf, calculatedGrandTotal);
         setSaveProgress('Mengunggah Dokumen F2 ke Google Drive...');
         const f2Data = await uploadFileToFolder(`F2 - ${cleanJenis} - ${cleanPenerima}.pdf`, 'application/pdf', f2PdfBytes, targetFolderId);
