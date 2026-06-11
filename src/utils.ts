@@ -40,154 +40,6 @@ export async function generateF1PdfBytes(submission: any, grandTotal: number): P
   page.drawText('PT. NUSANTARA MINERAL SUKSES ABADI', { x: 40, y: 795, size: 14, font: fontBold });
   page.drawText('VOUCHER SYSTEM PLATFORM', { x: 40, y: 780, size: 8, font: fontRegular });
   
-  // Draw title in box
-  page.drawRectangle({
-    x: 40,
-    y: 720,
-    width: 515,
-    height: 35,
-    color: rgb(0.85, 0.85, 0.85),
-    borderColor: rgb(0, 0, 0),
-    borderWidth: 1.5,
-  });
-  page.drawText('FORMULIR PENGAJUAN HO', { x: 195, y: 732, size: 12, font: fontBold });
-
-  // Draw metadata box
-  page.drawRectangle({
-    x: 40,
-    y: 620,
-    width: 515,
-    height: 80,
-    borderColor: rgb(0, 0, 0),
-    borderWidth: 1.5,
-  });
-  
-  const txtLokasi = `Lokasi                      :  ${submission.lokasi || ''}`;
-  const txtTanggal = `Tanggal                    :  ${formatDateIndonesian(submission.tanggal)}`;
-  const txtJenis = `Jenis Pengajuan       :  ${submission.jenisPengajuan || ''}`;
-  const txtKode = `Kode                       :  ${submission.kode || ''}`;
-  
-  page.drawText(txtLokasi, { x: 55, y: 680, size: 10, font: fontRegular });
-  page.drawText(txtTanggal, { x: 55, y: 663, size: 10, font: fontRegular });
-  page.drawText(txtJenis, { x: 55, y: 646, size: 10, font: fontRegular });
-  page.drawText(txtKode, { x: 55, y: 629, size: 10, font: fontMono });
-
-  // Draw Table header
-  page.drawRectangle({
-    x: 40,
-    y: 575,
-    width: 515,
-    height: 25,
-    color: rgb(0.9, 0.9, 0.9),
-    borderColor: rgb(0,0,0),
-    borderWidth: 1,
-  });
-  
-  page.drawText('NO', { x: 45, y: 583, size: 8, font: fontBold });
-  page.drawText('ITEM DETIL (INVOICE / DESKRIPSI)', { x: 75, y: 583, size: 8, font: fontBold });
-  page.drawText('VOLUME', { x: 325, y: 583, size: 8, font: fontBold });
-  page.drawText('TOTAL (RP)', { x: 400, y: 583, size: 8, font: fontBold });
-  page.drawText('KETERANGAN', { x: 475, y: 583, size: 8, font: fontBold });
-
-  let curY = 575;
-  const items = submission.items || [];
-  
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const descWrapped = wrapText(item.item || '', 240, fontRegular, 8);
-    const ketWrapped = wrapText(item.keterangan || '-', 70, fontRegular, 8);
-    const rowHeight = Math.max(descWrapped.length, ketWrapped.length, 1) * 12 + 10;
-    
-    // Draw row rectangle
-    page.drawRectangle({
-      x: 40,
-      y: curY - rowHeight,
-      width: 515,
-      height: rowHeight,
-      borderColor: rgb(0,0,0),
-      borderWidth: 1,
-    });
-    
-    // Draw columns vertical separation borders
-    page.drawLine({ start: { x: 65, y: curY }, end: { x: 65, y: curY - rowHeight }, thickness: 1 });
-    page.drawLine({ start: { x: 320, y: curY }, end: { x: 320, y: curY - rowHeight }, thickness: 1 });
-    page.drawLine({ start: { x: 390, y: curY }, end: { x: 390, y: curY - rowHeight }, thickness: 1 });
-    page.drawLine({ start: { x: 470, y: curY }, end: { x: 470, y: curY - rowHeight }, thickness: 1 });
-
-    // Fill row texts
-    page.drawText(String(i + 1), { x: 48, y: curY - 15, size: 8, font: fontMono });
-    
-    for (let dLine = 0; dLine < descWrapped.length; dLine++) {
-      page.drawText(descWrapped[dLine], { x: 75, y: curY - 15 - (dLine * 11), size: 8, font: fontBold });
-    }
-    
-    page.drawText(item.jumlahVolume || '-', { x: 325, y: curY - 15, size: 8, font: fontRegular });
-    page.drawText(formatRupiah(item.total), { x: 395, y: curY - 15, size: 8, font: fontBold });
-    
-    for (let kLine = 0; kLine < ketWrapped.length; kLine++) {
-      page.drawText(ketWrapped[kLine], { x: 475, y: curY - 15 - (kLine * 11), size: 8, font: fontRegular });
-    }
-    
-    curY -= rowHeight;
-  }
-  
-  // Total Row
-  page.drawRectangle({
-    x: 40,
-    y: curY - 25,
-    width: 515,
-    height: 25,
-    color: rgb(0.95, 0.95, 0.95),
-    borderColor: rgb(0,0,0),
-    borderWidth: 1.5,
-  });
-  page.drawLine({ start: { x: 390, y: curY }, end: { x: 390, y: curY - 25 }, thickness: 1.5 });
-  page.drawText('TOTAL PENYERAHAN', { x: 150, y: curY - 17, size: 9, font: fontBold });
-  page.drawText(formatRupiah(grandTotal), { x: 395, y: curY - 17, size: 9, font: fontBold });
-  
-  curY -= 25;
-  
-  // Signatures
-  const sigY = curY - 80;
-  page.drawText('Dibuat Oleh', { x: 90, y: curY - 30, size: 10, font: fontRegular });
-  page.drawText(submission.dibuatOleh || '', { x: 70, y: sigY, size: 10, font: fontBold });
-  page.drawLine({ start: { x: 60, y: sigY - 2 }, end: { x: 200, y: sigY - 2 }, thickness: 1 });
-  
-  page.drawText('Disetujui', { x: 410, y: curY - 30, size: 10, font: fontRegular });
-  page.drawText(submission.disetujuiOleh || '', { x: 390, y: sigY, size: 10, font: fontBold });
-  page.drawLine({ start: { x: 370, y: sigY - 2 }, end: { x: 500, y: sigY - 2 }, thickness: 1 });
-  
-  // Notes block
-  curY = sigY - 50;
-  page.drawText('NOTE :', { x: 40, y: curY, size: 9, font: fontBold });
-  page.drawRectangle({
-    x: 40,
-    y: curY - 50,
-    width: 515,
-    height: 40,
-    borderColor: rgb(0,0,0),
-    borderWidth: 1,
-  });
-  const wrappedNotes = wrapText(submission.notes || 'Tidak ada catatan tambahan.', 550, fontRegular, 8);
-  for (let nLine = 0; nLine < Math.min(wrappedNotes.length, 3); nLine++) {
-    page.drawText(wrappedNotes[nLine], { x: 45, y: curY - 14 - (nLine * 11), size: 8, font: fontRegular });
-  }
-  
-  return await pdfDoc.save();
-}
-
-export async function generateF2PdfBytes(submission: any, grandTotal: number): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.27, 841.89]);
-  
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
-  
-  // Draw Logo text
-  page.drawText('PT. NUSANTARA MINERAL SUKSES ABADI', { x: 40, y: 795, size: 14, font: fontBold });
-  page.drawText('VOUCHER SYSTEM PLATFORM', { x: 40, y: 780, size: 8, font: fontRegular });
-  
   // Draw Code and Date Box top right
   page.drawRectangle({
     x: 370,
@@ -349,6 +201,154 @@ export async function generateF2PdfBytes(submission: any, grandTotal: number): P
   page.drawText(submission.dibukukanOleh || '', { x: 45 + blockW * 3, y: sigTableY + 15, size: 8, font: fontBold });
   page.drawText(submission.dibukukanJabatan || '', { x: 45 + blockW * 3, y: sigTableY + 5, size: 7, font: fontRegular });
 
+  return await pdfDoc.save();
+}
+
+export async function generateF2PdfBytes(submission: any, grandTotal: number): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([595.27, 841.89]);
+  
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
+  
+  // Draw Logo text
+  page.drawText('PT. NUSANTARA MINERAL SUKSES ABADI', { x: 40, y: 795, size: 14, font: fontBold });
+  page.drawText('VOUCHER SYSTEM PLATFORM', { x: 40, y: 780, size: 8, font: fontRegular });
+  
+  // Draw title in box
+  page.drawRectangle({
+    x: 40,
+    y: 720,
+    width: 515,
+    height: 35,
+    color: rgb(0.85, 0.85, 0.85),
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 1.5,
+  });
+  page.drawText('FORMULIR PENGAJUAN HO', { x: 195, y: 732, size: 12, font: fontBold });
+
+  // Draw metadata box
+  page.drawRectangle({
+    x: 40,
+    y: 620,
+    width: 515,
+    height: 80,
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 1.5,
+  });
+  
+  const txtLokasi = `Lokasi                      :  ${submission.lokasi || ''}`;
+  const txtTanggal = `Tanggal                    :  ${formatDateIndonesian(submission.tanggal)}`;
+  const txtJenis = `Jenis Pengajuan       :  ${submission.jenisPengajuan || ''}`;
+  const txtKode = `Kode                       :  ${submission.kode || ''}`;
+  
+  page.drawText(txtLokasi, { x: 55, y: 680, size: 10, font: fontRegular });
+  page.drawText(txtTanggal, { x: 55, y: 663, size: 10, font: fontRegular });
+  page.drawText(txtJenis, { x: 55, y: 646, size: 10, font: fontRegular });
+  page.drawText(txtKode, { x: 55, y: 629, size: 10, font: fontMono });
+
+  // Draw Table header
+  page.drawRectangle({
+    x: 40,
+    y: 575,
+    width: 515,
+    height: 25,
+    color: rgb(0.9, 0.9, 0.9),
+    borderColor: rgb(0,0,0),
+    borderWidth: 1,
+  });
+  
+  page.drawText('NO', { x: 45, y: 583, size: 8, font: fontBold });
+  page.drawText('ITEM DETIL (INVOICE / DESKRIPSI)', { x: 75, y: 583, size: 8, font: fontBold });
+  page.drawText('VOLUME', { x: 325, y: 583, size: 8, font: fontBold });
+  page.drawText('TOTAL (RP)', { x: 400, y: 583, size: 8, font: fontBold });
+  page.drawText('KETERANGAN', { x: 475, y: 583, size: 8, font: fontBold });
+
+  let curY = 575;
+  const items = submission.items || [];
+  
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const descWrapped = wrapText(item.item || '', 240, fontRegular, 8);
+    const ketWrapped = wrapText(item.keterangan || '-', 70, fontRegular, 8);
+    const rowHeight = Math.max(descWrapped.length, ketWrapped.length, 1) * 12 + 10;
+    
+    // Draw row rectangle
+    page.drawRectangle({
+      x: 40,
+      y: curY - rowHeight,
+      width: 515,
+      height: rowHeight,
+      borderColor: rgb(0,0,0),
+      borderWidth: 1,
+    });
+    
+    // Draw columns vertical separation borders
+    page.drawLine({ start: { x: 65, y: curY }, end: { x: 65, y: curY - rowHeight }, thickness: 1 });
+    page.drawLine({ start: { x: 320, y: curY }, end: { x: 320, y: curY - rowHeight }, thickness: 1 });
+    page.drawLine({ start: { x: 390, y: curY }, end: { x: 390, y: curY - rowHeight }, thickness: 1 });
+    page.drawLine({ start: { x: 470, y: curY }, end: { x: 470, y: curY - rowHeight }, thickness: 1 });
+
+    // Fill row texts
+    page.drawText(String(i + 1), { x: 48, y: curY - 15, size: 8, font: fontMono });
+    
+    for (let dLine = 0; dLine < descWrapped.length; dLine++) {
+      page.drawText(descWrapped[dLine], { x: 75, y: curY - 15 - (dLine * 11), size: 8, font: fontBold });
+    }
+    
+    page.drawText(item.jumlahVolume || '-', { x: 325, y: curY - 15, size: 8, font: fontRegular });
+    page.drawText(formatRupiah(item.total), { x: 395, y: curY - 15, size: 8, font: fontBold });
+    
+    for (let kLine = 0; kLine < ketWrapped.length; kLine++) {
+      page.drawText(ketWrapped[kLine], { x: 475, y: curY - 15 - (kLine * 11), size: 8, font: fontRegular });
+    }
+    
+    curY -= rowHeight;
+  }
+  
+  // Total Row
+  page.drawRectangle({
+    x: 40,
+    y: curY - 25,
+    width: 515,
+    height: 25,
+    color: rgb(0.95, 0.95, 0.95),
+    borderColor: rgb(0,0,0),
+    borderWidth: 1.5,
+  });
+  page.drawLine({ start: { x: 390, y: curY }, end: { x: 390, y: curY - 25 }, thickness: 1.5 });
+  page.drawText('TOTAL PENYERAHAN', { x: 150, y: curY - 17, size: 9, font: fontBold });
+  page.drawText(formatRupiah(grandTotal), { x: 395, y: curY - 17, size: 9, font: fontBold });
+  
+  curY -= 25;
+  
+  // Signatures
+  const sigY = curY - 80;
+  page.drawText('Dibuat Oleh', { x: 90, y: curY - 30, size: 10, font: fontRegular });
+  page.drawText(submission.dibuatOleh || '', { x: 70, y: sigY, size: 10, font: fontBold });
+  page.drawLine({ start: { x: 60, y: sigY - 2 }, end: { x: 200, y: sigY - 2 }, thickness: 1 });
+  
+  page.drawText('Disetujui', { x: 410, y: curY - 30, size: 10, font: fontRegular });
+  page.drawText(submission.disetujuiOleh || '', { x: 390, y: sigY, size: 10, font: fontBold });
+  page.drawLine({ start: { x: 370, y: sigY - 2 }, end: { x: 500, y: sigY - 2 }, thickness: 1 });
+  
+  // Notes block
+  curY = sigY - 50;
+  page.drawText('NOTE :', { x: 40, y: curY, size: 9, font: fontBold });
+  page.drawRectangle({
+    x: 40,
+    y: curY - 50,
+    width: 515,
+    height: 40,
+    borderColor: rgb(0,0,0),
+    borderWidth: 1,
+  });
+  const wrappedNotes = wrapText(submission.notes || 'Tidak ada catatan tambahan.', 550, fontRegular, 8);
+  for (let nLine = 0; nLine < Math.min(wrappedNotes.length, 3); nLine++) {
+    page.drawText(wrappedNotes[nLine], { x: 45, y: curY - 14 - (nLine * 11), size: 8, font: fontRegular });
+  }
+  
   return await pdfDoc.save();
 }
 
