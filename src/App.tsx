@@ -30,19 +30,36 @@ export default function App() {
   const [authUser, setAuthUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [currentHash, setCurrentHash] = useState(window.location.hash);
 
-  // Synchronous route popstate tracking
+  // Synchronous route popstate and hashchange tracking
   useEffect(() => {
-    const handlePopState = () => {
+    const handleNavigation = () => {
       setCurrentPath(window.location.pathname);
+      setCurrentHash(window.location.hash);
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handleNavigation);
+    window.addEventListener('hashchange', handleNavigation);
+    return () => {
+      window.removeEventListener('popstate', handleNavigation);
+      window.removeEventListener('hashchange', handleNavigation);
+    };
   }, []);
 
   const navigateTo = (path: string) => {
-    window.history.pushState({}, '', path);
-    setCurrentPath(path);
+    if (path === '/') {
+      window.history.pushState({}, '', '/');
+      window.location.hash = '';
+      setCurrentPath('/');
+      setCurrentHash('');
+    } else if (path.startsWith('#')) {
+      window.location.hash = path;
+      setCurrentHash(path);
+    } else {
+      window.history.pushState({}, '', path);
+      setCurrentPath(path);
+      setCurrentHash('');
+    }
   };
 
   // Listen to Firebase Auth status and load/clear data accordingly
@@ -278,7 +295,12 @@ export default function App() {
     saveSubmissionsToStorage(updated);
   };
 
-  if (currentPath === '/input-bukti-transfer') {
+  const isIndividualUploaderView = 
+    currentPath === '/input-bukti-transfer' || 
+    currentHash === '#/input-bukti-transfer' || 
+    currentHash === '#input-bukti-transfer';
+
+  if (isIndividualUploaderView) {
     return (
       <div id="app-root" className="min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased">
         <header className="bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs print:hidden">
@@ -436,7 +458,7 @@ export default function App() {
                 setEditingSubmission(null);
                 setView('form');
               }}
-              onOpenBuktiTransfer={() => navigateTo('/input-bukti-transfer')}
+              onOpenBuktiTransfer={() => navigateTo('#/input-bukti-transfer')}
             />
 
             {/* Backup / Export-Import Section */}
