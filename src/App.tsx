@@ -295,6 +295,31 @@ export default function App() {
     saveSubmissionsToStorage(updated);
   };
 
+  // Check Authentication First: enforce AuthGate for ALL pages when unauthenticated
+  if (!authUser) {
+    return (
+      <AuthGate
+        onLoginSuccess={(user, initialData) => {
+          sessionStorage.setItem('NUSANTARA_SESSION_ACTIVE', 'true');
+          setAuthUser(user);
+          if (initialData && initialData.length > 0) {
+            saveSubmissionsToStorage(initialData);
+          } else {
+            // Check localstorage content as fallback
+            try {
+              const stored = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
+              if (stored) {
+                setSubmissions(JSON.parse(stored));
+              }
+            } catch (e) {
+              console.error('Error loading data from localStorage:', e);
+            }
+          }
+        }}
+      />
+    );
+  }
+
   const isIndividualUploaderView = 
     currentPath === '/input-bukti-transfer' || 
     currentHash === '#/input-bukti-transfer' || 
@@ -371,31 +396,6 @@ export default function App() {
           </div>
         </footer>
       </div>
-    );
-  }
-
-  // Check Authentication First: enforce AuthGate for ALL pages when unauthenticated
-  if (!authUser) {
-    return (
-      <AuthGate
-        onLoginSuccess={(user, initialData) => {
-          sessionStorage.setItem('NUSANTARA_SESSION_ACTIVE', 'true');
-          setAuthUser(user);
-          if (initialData && initialData.length > 0) {
-            saveSubmissionsToStorage(initialData);
-          } else {
-            // Check localstorage content as fallback
-            try {
-              const stored = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
-              if (stored) {
-                setSubmissions(JSON.parse(stored));
-              }
-            } catch (e) {
-              console.error('Error loading data from localStorage:', e);
-            }
-          }
-        }}
-      />
     );
   }
 
