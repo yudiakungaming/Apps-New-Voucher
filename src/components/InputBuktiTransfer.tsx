@@ -146,12 +146,17 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
     setErrorText('');
 
     try {
+      const cleanJenis = (selectedSubmission.jenisPengajuan || 'Non-Kategori').replace(/[^a-zA-Z0-9\s_-]/g, '').trim();
+      const cleanPenerima = (selectedSubmission.dibayarkanKepada || 'Penerima').replace(/[^a-zA-Z0-9\s_-]/g, '').trim();
+      const ext = uploadedFile.name.substring(uploadedFile.name.lastIndexOf('.')).toLowerCase() || '.png';
+      const formattedFileName = `Bukti Pembayaran - (${cleanJenis} - ${cleanPenerima})${ext}`;
+
       const updatedSubmission: Submission = {
         ...selectedSubmission,
         status: 'Lunas',
         buktiPembayaran: {
           url: uploadedFile.base64,
-          name: uploadedFile.name
+          name: formattedFileName
         },
         // Also append to googleDriveFiles array so it renders organically as attachment page
         googleDriveFiles: [
@@ -160,7 +165,7 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
           ),
           {
             url: uploadedFile.base64,
-            name: `Bukti Pembayaran - ${uploadedFile.name}`,
+            name: formattedFileName,
             isBuktiPembayaran: true
           }
         ]
