@@ -9,6 +9,7 @@ import { NusantaraLogo } from './components/NusantaraLogo';
 import { SheetsImport } from './components/SheetsImport';
 import { FirebaseSyncConfig } from './components/FirebaseSyncConfig';
 import { AuthGate } from './components/AuthGate';
+import { InputBuktiTransfer } from './components/InputBuktiTransfer';
 import { 
   isFirebaseConfigured, 
   saveSubmissionToFirestore, 
@@ -28,6 +29,21 @@ export default function App() {
   const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
   const [authUser, setAuthUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  // Synchronous route popstate tracking
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = (path: string) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
+  };
 
   // Listen to Firebase Auth status and load/clear data accordingly
   useEffect(() => {
@@ -262,6 +278,51 @@ export default function App() {
     saveSubmissionsToStorage(updated);
   };
 
+  if (currentPath === '/input-bukti-transfer') {
+    return (
+      <div id="app-root" className="min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased">
+        <header className="bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs print:hidden">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between min-h-18 py-2 md:py-0">
+              <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo('/')}>
+                <div className="p-2.5 bg-stone-100 rounded-xl text-stone-800">
+                  <Database size={20} className="text-[#D4AF37]" />
+                </div>
+                <div className="space-y-0.5">
+                  <span className="font-mono text-xs uppercase tracking-wider text-stone-400 font-bold block">
+                    Sistem Voucher NMSA
+                  </span>
+                  <h1 className="text-xs sm:text-sm font-black text-stone-900 tracking-tight flex items-center gap-1.5 font-sans">
+                    Nusantara Mineral Payment Portal
+                  </h1>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <InputBuktiTransfer 
+            submissions={submissions} 
+            onUpdateSubmissions={setSubmissions} 
+            onBack={() => navigateTo('/')} 
+          />
+        </main>
+
+        <footer className="bg-white border-t border-stone-200 py-6 print:hidden">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-stone-400">
+            <div>
+              PT. Nusantara Mineral Sukses Abadi &copy; 2026. Semua hak cipta dilindungi.
+            </div>
+            <div className="flex items-center gap-1 text-stone-200">
+              Dibuat dengan <Heart size={10} className="fill-rose-500 text-rose-500 animate-pulse" /> untuk administrasi HO yang modern
+            </div>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
   if (!authUser) {
     return (
       <AuthGate
@@ -375,6 +436,7 @@ export default function App() {
                 setEditingSubmission(null);
                 setView('form');
               }}
+              onOpenBuktiTransfer={() => navigateTo('/input-bukti-transfer')}
             />
 
             {/* Backup / Export-Import Section */}
