@@ -387,6 +387,20 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onLoginSuccess }) => {
               <div className="pt-2 text-center text-xs text-stone-400 font-mono">
                 Butuh akses pertama kali? Silakan klik tab <strong>Daftar Akun</strong>.
               </div>
+
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-stone-200"></div>
+                <span className="flex-shrink mx-4 text-[10px] font-mono font-bold text-stone-400 uppercase tracking-widest">Portal Khusus Keuangan</span>
+                <div className="flex-grow border-t border-stone-200"></div>
+              </div>
+
+              <a
+                href="#/input-bukti-transfer"
+                className="w-full border border-amber-300 bg-amber-50/30 hover:bg-amber-50 text-amber-900 font-bold py-3.5 px-4 rounded-xl text-xs uppercase tracking-wider font-mono flex items-center justify-center gap-2 transition duration-150 decoration-transparent hover:border-amber-450 hover:shadow-xs cursor-pointer"
+              >
+                <RefreshCw size={13} className="text-amber-500 animate-spin-slow" />
+                Input Bukti Pembayaran Keuangan ➔
+              </a>
             </form>
           )}
 
