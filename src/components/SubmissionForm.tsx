@@ -677,7 +677,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         setSaveProgress('Membuat Dokumen PDF Bukti Pengeluaran Kas/Bank (F1)...');
         const f1PdfBytes = await generateF1PdfBytes(tempSubmissionForPdf, calculatedGrandTotal);
         setSaveProgress('Mengunggah Dokumen F1 ke Google Drive...');
-        const f1Data = await uploadFileToFolder(`F1 - ${cleanJenis} - ${cleanPenerima}.pdf`, 'application/pdf', f1PdfBytes, targetFolderId);
+        const f1Data = await uploadFileToFolder(`F1 - (${cleanJenis} - ${cleanPenerima}).pdf`, 'application/pdf', f1PdfBytes, targetFolderId);
         finalFiles.push({
           url: f1Data.url,
           name: f1Data.name,
@@ -688,7 +688,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         setSaveProgress('Membuat Dokumen PDF Form Pengajuan HO (F2)...');
         const f2PdfBytes = await generateF2PdfBytes(tempSubmissionForPdf, calculatedGrandTotal);
         setSaveProgress('Mengunggah Dokumen F2 ke Google Drive...');
-        const f2Data = await uploadFileToFolder(`F2 - ${cleanJenis} - ${cleanPenerima}.pdf`, 'application/pdf', f2PdfBytes, targetFolderId);
+        const f2Data = await uploadFileToFolder(`F2 - (${cleanJenis} - ${cleanPenerima}).pdf`, 'application/pdf', f2PdfBytes, targetFolderId);
         finalFiles.push({
           url: f2Data.url,
           name: f2Data.name,
@@ -741,7 +741,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           }
 
           const ext = mimeType === 'application/pdf' ? '.pdf' : (getFileExtensionForSave(originalName) || '.bin');
-          const baseName = `${cleanJenis} - ${cleanPenerima}`;
+          const baseName = `Bukti Transaksi - (${cleanJenis} - ${cleanPenerima})`;
           const finalFileName = i === 0 ? `${baseName}${ext}` : `${baseName} (${i + 1})${ext}`;
 
           const resData = await uploadFileToFolder(finalFileName, mimeType, fileBytes, targetFolderId);
@@ -759,20 +759,20 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           setSaveProgress(`Mengunggah berkas Bukti Pembayaran: ${buktiPembayaranFile.name}...`);
           let bytes = new Uint8Array(await buktiPembayaranFile.arrayBuffer());
           let mime = buktiPembayaranFile.type || 'application/octet-stream';
-          let finalName = buktiPembayaranFile.name;
-
-          if (mime.startsWith('image/') || /\.jpe?g|\.png/i.test(finalName)) {
+          
+          let paymentExt = getFileExtensionForSave(buktiPembayaranFile.name) || '.pdf';
+          if (mime.startsWith('image/') || /\.jpe?g|\.png/i.test(buktiPembayaranFile.name)) {
             try {
               setSaveProgress('Mengubah gambar bukti pembayaran ke PDF...');
               bytes = await convertImageToPdf(bytes, mime);
               mime = 'application/pdf';
-              const lastDot = finalName.lastIndexOf('.');
-              const nameWithoutExt = lastDot !== -1 ? finalName.substring(0, lastDot) : finalName;
-              finalName = `${nameWithoutExt}.pdf`;
+              paymentExt = '.pdf';
             } catch (convErr) {
               console.warn('Gagal mengubah bukti pembayaran ke PDF:', convErr);
             }
           }
+          
+          let finalName = `Bukti Pembayaran - (${cleanJenis} - ${cleanPenerima})${paymentExt}`;
           
           const uploadResult = await uploadFileToFolder(finalName, mime, bytes, folderBuktiBayarId);
           finalBuktiPembayaran = uploadResult;
@@ -809,7 +809,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         kode,
         dibayarkanKepada,
         dibayarkanDengan,
-        status,
+        status: finalBuktiPembayaran ? 'Lunas' : 'Belum Lunas',
         notes,
         googleDriveFileUrl: finalFileUrl,
         googleDriveFileName: finalFileName,
@@ -995,17 +995,20 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
             </select>
           </div>
 
-          {/* Status Pembayaran */}
+          {/* Status Pembayaran (Auto-Calculated Badge based on proof upload) */}
           <div>
             <label className="block text-xs font-medium text-stone-500 mb-1">Status Pembayaran</label>
-            <select
-              className="w-full bg-white border border-stone-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-stone-400"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'Lunas' | 'Belum Lunas')}
-            >
-              <option value="Lunas">Lunas</option>
-              <option value="Belum Lunas">Belum Lunas</option>
-            </select>
+            <div className="w-full bg-stone-50 border border-stone-200 rounded-lg py-1.5 px-3 text-sm flex items-center justify-between min-h-[38px]">
+              <span className="font-medium text-stone-500 text-xs">Auto-System</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase tracking-wider ${
+                (buktiPembayaranFile || buktiPembayaranDrive) 
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-250' 
+                  : 'bg-amber-50 text-[#a58421] border border-amber-250'
+              }`}>
+                {(buktiPembayaranFile || buktiPembayaranDrive) ? 'Lunas' : 'Belum Lunas'}
+              </span>
+            </div>
+            <p className="text-[10px] text-stone-400 mt-1">Status ditentukan berdasarkan bukti pembayaran.</p>
           </div>
 
           {/* Catatan / Notes */}
