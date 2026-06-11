@@ -122,12 +122,23 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             setLoadingProgress(`Mengunduh berkas ${i + 1} dari ${attachmentFiles.length}: ${file.name}...`);
           }
 
-          const dMatch = file.url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-          const idMatch = file.url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+          if (file.url && (file.url.startsWith('data:') || file.url.startsWith('blob:'))) {
+            tempPages.push({
+              id: `direct-b64-${i}-${Date.now()}`,
+              fileName: file.name,
+              fileIndex: i,
+              pageNumber: 1,
+              dataUrl: file.url
+            });
+            continue;
+          }
+
+          const dMatch = file.url ? file.url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) : null;
+          const idMatch = file.url ? file.url.match(/[?&]id=([a-zA-Z0-9_-]+)/) : null;
           const fileId = (dMatch && dMatch[1]) || (idMatch && idMatch[1]);
 
           if (!fileId) {
-            console.warn('Tidak dapat menemukan file ID untuk', file.url);
+            console.warn('Tidak dapat menemukan file ID untuk', file?.url);
             continue;
           }
 
