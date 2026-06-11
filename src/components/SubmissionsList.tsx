@@ -10,6 +10,7 @@ interface SubmissionsListProps {
   onDelete: (id: string) => void;
   onDuplicate: (submission: Submission) => void;
   onAddNew: () => void;
+  onOpenBuktiTransfer?: () => void;
 }
 
 export const SubmissionsList: React.FC<SubmissionsListProps> = ({
@@ -19,6 +20,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   onDelete,
   onDuplicate,
   onAddNew,
+  onOpenBuktiTransfer,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('All');
@@ -168,15 +170,26 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
           </select>
         </div>
 
-        {/* Create Button */}
-        <button
-          onClick={onAddNew}
-          id="btn-add-new-submission"
-          className="flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#Bca031] text-stone-900 font-semibold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300"
-        >
-          <Plus size={18} />
-          Input Pengajuan Baru
-        </button>
+        {/* Action Button Container */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+          <button
+            onClick={onOpenBuktiTransfer}
+            id="btn-upload-bukti-transfer"
+            className="flex items-center justify-center gap-1 px-4 py-2.5 border border-stone-250 bg-white hover:bg-stone-50 hover:border-stone-400 text-stone-700 font-bold rounded-xl transition shadow-3xs cursor-pointer text-xs"
+          >
+            <RefreshCw size={14} className="text-amber-500 mr-1" />
+            <span>Upload Bukti Bayar</span>
+          </button>
+
+          <button
+            onClick={onAddNew}
+            id="btn-add-new-submission"
+            className="flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#Bca031] text-stone-900 font-bold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300 cursor-pointer text-xs"
+          >
+            <Plus size={16} />
+            <span>Input Pengajuan Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Table */}
