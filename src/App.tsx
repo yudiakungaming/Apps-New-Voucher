@@ -295,31 +295,6 @@ export default function App() {
     saveSubmissionsToStorage(updated);
   };
 
-  // Check Authentication First: enforce AuthGate for ALL pages when unauthenticated
-  if (!authUser) {
-    return (
-      <AuthGate
-        onLoginSuccess={(user, initialData) => {
-          sessionStorage.setItem('NUSANTARA_SESSION_ACTIVE', 'true');
-          setAuthUser(user);
-          if (initialData && initialData.length > 0) {
-            saveSubmissionsToStorage(initialData);
-          } else {
-            // Check localstorage content as fallback
-            try {
-              const stored = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
-              if (stored) {
-                setSubmissions(JSON.parse(stored));
-              }
-            } catch (e) {
-              console.error('Error loading data from localStorage:', e);
-            }
-          }
-        }}
-      />
-    );
-  }
-
   const isIndividualUploaderView = 
     currentPath === '/input-bukti-transfer' || 
     currentHash === '#/input-bukti-transfer' || 
@@ -346,29 +321,31 @@ export default function App() {
               </div>
 
               {/* User Info & Logout Button for Finance View */}
-              <div className="flex flex-col items-end gap-1.5 text-right py-1">
-                <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
-                  <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
-                  <span className="truncate max-w-[200px] sm:max-w-none">
-                    Divisi: <strong className="font-sans font-black text-stone-900">{userProfile ? userProfile?.fullName : authUser?.email}</strong> 
-                    {userProfile ? ` (${userProfile.role})` : ''}
-                  </span>
+              {authUser && (
+                <div className="flex flex-col items-end gap-1.5 text-right py-1">
+                  <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
+                    <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
+                    <span className="truncate max-w-[200px] sm:max-w-none">
+                      Divisi: <strong className="font-sans font-black text-stone-900">{userProfile ? userProfile?.fullName : authUser?.email}</strong> 
+                      {userProfile ? ` (${userProfile.role})` : ''}
+                    </span>
+                  </div>
+                  <button
+                    id="btn-logout-header-finance"
+                    onClick={async () => {
+                      try {
+                        await logoutFromFirebase();
+                      } catch (e) {
+                        console.error('Keluar aplikasi gagal:', e);
+                      }
+                    }}
+                    className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md px-2 py-0.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
+                    title="Keluar dari sesi saat ini"
+                  >
+                    <span>Keluar Aplikasi (Logout)</span>
+                  </button>
                 </div>
-                <button
-                  id="btn-logout-header-finance"
-                  onClick={async () => {
-                    try {
-                      await logoutFromFirebase();
-                    } catch (e) {
-                      console.error('Keluar aplikasi gagal:', e);
-                    }
-                  }}
-                  className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md px-2 py-0.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
-                  title="Keluar dari sesi saat ini"
-                >
-                  <span>Keluar Aplikasi (Logout)</span>
-                </button>
-              </div>
+              )}
 
             </div>
           </div>
@@ -394,6 +371,31 @@ export default function App() {
           </div>
         </footer>
       </div>
+    );
+  }
+
+  // Check Authentication First: enforce AuthGate for ALL pages when unauthenticated
+  if (!authUser) {
+    return (
+      <AuthGate
+        onLoginSuccess={(user, initialData) => {
+          sessionStorage.setItem('NUSANTARA_SESSION_ACTIVE', 'true');
+          setAuthUser(user);
+          if (initialData && initialData.length > 0) {
+            saveSubmissionsToStorage(initialData);
+          } else {
+            // Check localstorage content as fallback
+            try {
+              const stored = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
+              if (stored) {
+                setSubmissions(JSON.parse(stored));
+              }
+            } catch (e) {
+              console.error('Error loading data from localStorage:', e);
+            }
+          }
+        }}
+      />
     );
   }
 
