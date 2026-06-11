@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Submission } from '../types';
-import { loadSubmissionsFromFirestore, saveSubmissionToFirestore, isFirebaseConfigured } from '../firebase';
-import { formatRupiah, formatDateIndonesian } from '../utils';
+import { 
+  loadSubmissionsFromFirestore, 
+  saveSubmissionToFirestore, 
+  isFirebaseConfigured,
+  googleDriveLogin,
+  getStoredGoogleDriveToken,
+  setGoogleDriveToken
+} from '../firebase';
+import { formatRupiah, formatDateIndonesian, convertImageToPdf } from '../utils';
 import { 
   ArrowLeft, 
   UploadCloud, 
@@ -9,61 +16,107 @@ import {
   Search, 
   FileText, 
   X, 
-  CornerDownRight, 
   CreditCard,
   Building,
   Calendar,
   User,
   AlertCircle,
   Clock,
-  Sparkles
+  Filter,
+  Check,
+  TrendingUp,
+  TrendingDown,
+  Info,
+  CalendarDays,
+  Tag,
+  Coins,
+  MapPin,
+  ListFilter,
+  SlidersHorizontal,
+  Cloud,
+  CheckSquare,
+  Link
 } from 'lucide-react';
 
 interface InputBuktiTransferProps {
   onBack: () => void;
   submissions: Submission[];
   onUpdateSubmissions: (updatedSubmissions: Submission[]) => void;
+  userProfile?: any;
 }
 
 export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({ 
   onBack, 
   submissions: parentSubmissions, 
-  onUpdateSubmissions 
+  onUpdateSubmissions,
+  userProfile
 }) => {
   const [localSubmissions, setLocalSubmissions] = useState<Submission[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Advanced Filter state variables
+  const [filterStatus, setFilterStatus] = useState<'All' | 'Lunas' | 'Belum Lunas'>('Belum Lunas');
+  const [filterLocation, setFilterLocation] = useState<string>('All');
+  const [filterJenis, setFilterJenis] = useState<string>('All');
+  const [sortBy, setSortBy] = useState<'tanggal-desc' | 'tanggal-asc' | 'nominal-desc' | 'nominal-asc'>('tanggal-desc');
+
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; base64: string } | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; base64: string; fileObject?: File } | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [successCode, setSuccessCode] = useState('');
 
-  // Fetch the latest submissions on mount to ensure freshness
+  // Google Drive state variables
+  const [isDriveConnected, setIsDriveConnected] = useState(false);
+  const [saveProgress, setSaveProgress] = useState('');
+
+  // Check Drive connection status on mount and userProfile changes
+  useEffect(() => {
+    const token = getStoredGoogleDriveToken();
+    if (token) {
+      setIsDriveConnected(true);
+    }
+  }, []);
+
+  const handleConnectDrive = async () => {
+    setErrorText('');
+    try {
+      const result = await googleDriveLogin();
+      if (result.accessToken) {
+        setIsDriveConnected(true);
+      }
+    } catch (err: any) {
+      setErrorText(`Gagal menghubungkan Google Drive Anda: ${err.message || err}`);
+    }
+  };
+
+  // Fetch newest submissions on startup
   useEffect(() => {
     const fetchLatest = async () => {
       setIsLoading(true);
       try {
         if (isFirebaseConfigured()) {
-          const freshData = await loadSubmissionsFromFirestore();
+          const freshData = await loadSubmissionsFromFirestore(userProfile?.companyId);
           if (freshData && freshData.length > 0) {
             setLocalSubmissions(freshData);
             onUpdateSubmissions(freshData);
+            setIsLoading(false);
             return;
           }
         }
       } catch (err) {
-        console.warn('Silent read fallback to parent submissions list', err);
+        console.warn('Fallback silent read to local state', err);
       }
       
-      // Fallback to parents
+      // Fallback
       setLocalSubmissions(parentSubmissions.length > 0 ? parentSubmissions : loadFromLocalStorage());
       setIsLoading(false);
     };
 
     fetchLatest();
-  }, []);
+  }, [userProfile]);
 
   const loadFromLocalStorage = (): Submission[] => {
     try {
@@ -75,6 +128,205 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
       console.error(e);
     }
     return [];
+  };
+
+  // Helper to calculate total for a submission
+  const getSubmissionTotal = (sub: Submission): number => {
+    return sub.items?.reduce((sum, item) => sum + (Number(item.total) || 0), 0) || 0;
+  };
+
+  // ═════════ GOOGLE DRIVE DIR HIERARCHY HELPER ACTIONS ═════════
+  const getOrCreateFolder = async (token: string, name: string, parentId: string): Promise<string> => {
+    const cleanName = name.trim();
+    const cleanSearchName = cleanName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const query = `name = '${cleanSearchName}' and mimeType = 'application/vnd.google-apps.folder' and '${parentId}' in parents and trashed = false`;
+    
+    console.log(`[Drive API] Searching folder: "${cleanName}" under parent "${parentId}"`);
+    
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType)`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error('UNAUTHORIZED_DRIVE_TOKEN');
+      }
+      throw new Error(`Gagal mencari folder '${cleanName}': ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (data.files && data.files.length > 0) {
+      console.log(`[Drive API] Folder found: "${cleanName}" with ID: ${data.files[0].id}`);
+      return data.files[0].id;
+    }
+
+    console.log(`[Drive API] Folder NOT found. Creating folder: "${cleanName}" under parent "${parentId}"`);
+
+    // Create folder if not found
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: cleanName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentId],
+      }),
+    });
+
+    if (!createRes.ok) {
+      if (createRes.status === 401) {
+        throw new Error('UNAUTHORIZED_DRIVE_TOKEN');
+      }
+      const errText = await createRes.text();
+      throw new Error(`Gagal membuat folder '${cleanName}': ${errText}`);
+    }
+
+    const createdData = await createRes.json();
+    console.log(`[Drive API] Folder created: "${cleanName}" with ID: ${createdData.id}`);
+    return createdData.id;
+  };
+
+  const parseCompanyAndSequence = (kodeStr: string): { company: string; customFolderKode: string } => {
+    const clean = (kodeStr || '').trim();
+    const parts = clean.split(/[\s/\\_-]+/);
+    
+    let company = 'nmsa'; // Default company
+    let prefix = 'BKK';
+    let seq = '';
+    
+    if (parts.length > 0) {
+      const firstPartUpper = parts[0].toUpperCase();
+      if (firstPartUpper === 'BKK' && parts.length >= 2) {
+        prefix = 'BKK';
+        company = parts[1].toLowerCase();
+        seq = parts[parts.length - 1];
+      } else {
+        if (parts.length >= 2) {
+          prefix = parts[0].toUpperCase();
+          company = parts[1].toLowerCase();
+          seq = parts[parts.length - 1];
+        } else {
+          prefix = 'BKK';
+          company = 'nmsa';
+          seq = parts[0];
+        }
+      }
+    }
+    
+    company = company.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    if (!company) company = 'nmsa';
+    
+    const compUpper = company.toUpperCase();
+    const cleanSeq = (seq || '').toUpperCase();
+    const customFolderKode = `${prefix}-${compUpper}-${cleanSeq}`;
+    
+    return {
+      company,
+      customFolderKode
+    };
+  };
+
+  const uploadFileToFolder = async (
+    token: string,
+    fileName: string,
+    fileMimeType: string,
+    fileBytes: Uint8Array,
+    folderId: string
+  ): Promise<{ url: string; name: string }> => {
+    // Check if file already exists in this folder to avoid duplicates
+    try {
+      const searchRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+          `name = '${fileName.replace(/'/g, "\\'")}' and '${folderId}' in parents and trashed = false`
+        )}&fields=files(id)`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.files && searchData.files.length > 0) {
+          for (const existingFile of searchData.files) {
+            await fetch(`https://www.googleapis.com/drive/v3/files/${existingFile.id}`, {
+              method: 'DELETE',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+          }
+        }
+      }
+    } catch (dupErr) {
+      console.warn('Error checking/deleting duplicate file:', fileName, dupErr);
+    }
+
+    const fileBlob = new Blob([fileBytes], { type: fileMimeType });
+    const compiledFile = new File([fileBlob], fileName, { type: fileMimeType });
+
+    const metadata = {
+      name: fileName,
+      mimeType: fileMimeType,
+      parents: [folderId],
+    };
+
+    const formData = new FormData();
+    formData.append(
+      'metadata',
+      new Blob([JSON.stringify(metadata)], { type: 'application/json' })
+    );
+    formData.append('file', compiledFile);
+
+    const res = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        setIsDriveConnected(false);
+        setGoogleDriveToken(null);
+        throw new Error('UNAUTHORIZED_DRIVE_TOKEN');
+      }
+      const errorText = await res.text();
+      throw new Error(`Gagal mengunggah file '${fileName}' ke Drive: ${errorText}`);
+    }
+
+    const fileData = await res.json();
+
+    // Set permissions
+    try {
+      await fetch(`https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          role: 'reader',
+          type: 'anyone',
+        }),
+      });
+    } catch (perErr) {
+      console.warn('Could not set permissions for uploaded file:', fileName, perErr);
+    }
+
+    return {
+      url: fileData.webViewLink || `https://drive.google.com/file/d/${fileData.id}/view?usp=drivesdk`,
+      name: fileData.name || fileName,
+    };
   };
 
   // Drag and drop events
@@ -91,9 +343,8 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
   const processFile = (file: File) => {
     if (!file) return;
 
-    // Check size limit: 5MB
     if (file.size > 5 * 1024 * 1024) {
-      setErrorText('File terlalu besar. Batas ukuran maksimal adalah 5 MB.');
+      setErrorText('File terlalu besar. Batas ukuran maksimal lampiran bukti bayar adalah 5 MB.');
       return;
     }
 
@@ -103,7 +354,8 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
       if (base64Data) {
         setUploadedFile({
           name: file.name,
-          base64: base64Data
+          base64: base64Data,
+          fileObject: file
         });
         setErrorText('');
       }
@@ -131,62 +383,206 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
     setUploadedFile(null);
   };
 
-  // Submit Uploaded Receipt
+  // Submit and upload the receipt
   const handleSubmitReceipt = async () => {
     if (!selectedSubmission) {
       setErrorText('Harap pilih salah satu pengajuan voucher terlebih dahulu.');
       return;
     }
     if (!uploadedFile) {
-      setErrorText('Harap unggah atau drop file bukti transfer terlebih dahulu.');
+      setErrorText('Harap sertakan file/foto bukti transfer terlebih dahulu.');
       return;
     }
 
     setIsLoading(true);
     setErrorText('');
+    setSaveProgress('Memulai validasi lunas...');
 
     try {
       const cleanJenis = (selectedSubmission.jenisPengajuan || 'Non-Kategori').replace(/[^a-zA-Z0-9\s_-]/g, '').trim();
       const cleanPenerima = (selectedSubmission.dibayarkanKepada || 'Penerima').replace(/[^a-zA-Z0-9\s_-]/g, '').trim();
-      const ext = uploadedFile.name.substring(uploadedFile.name.lastIndexOf('.')).toLowerCase() || '.png';
+      
+      const extIndex = uploadedFile.name.lastIndexOf('.');
+      const rawExt = extIndex !== -1 ? uploadedFile.name.substring(extIndex).toLowerCase() : '.pdf';
+      const ext = rawExt.startsWith('.') ? rawExt : `.${rawExt}`;
       const formattedFileName = `Bukti Pembayaran - (${cleanJenis} - ${cleanPenerima})${ext}`;
+
+      let finalBuktiPembayaran = {
+        url: uploadedFile.base64,
+        name: formattedFileName
+      };
+
+      let finalDriveFiles = [
+        ...(selectedSubmission.googleDriveFiles || []).filter(
+          f => !f.isBuktiPembayaran
+        )
+      ];
+
+      const token = getStoredGoogleDriveToken();
+      if (token && isDriveConnected) {
+        setSaveProgress('Menghubungkan ke layanan Google Drive...');
+        
+        let yearStr = '';
+        let monthStr = '';
+        let dayStr = '';
+
+        const parts = (selectedSubmission.tanggal || '').split('-');
+        if (parts.length === 3) {
+          yearStr = parts[0];
+          const monthIdx = parseInt(parts[1], 10) - 1;
+          const INDONESIAN_MONTHS = [
+            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+          ];
+          monthStr = INDONESIAN_MONTHS[monthIdx] || 'Januari';
+          dayStr = String(parseInt(parts[2], 10));
+        } else {
+          const dateObj = new Date();
+          yearStr = String(dateObj.getFullYear());
+          const INDONESIAN_MONTHS = [
+            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+          ];
+          monthStr = INDONESIAN_MONTHS[dateObj.getMonth()];
+          dayStr = String(dateObj.getDate());
+        }
+
+        const { company } = parseCompanyAndSequence(selectedSubmission.kode);
+        const folderCompanyUpper = company.toUpperCase();
+
+        try {
+          // 1. Get or create 'Voucher-APP' under 'root'
+          const rootId = 'root';
+          setSaveProgress('1/7. Menghubungkan folder utama "Voucher-APP"...');
+          const voucherAppId = await getOrCreateFolder(token, 'Voucher-APP', rootId);
+
+          // 2. Get or create company folder under 'Voucher-APP'
+          setSaveProgress(`2/7. Menyusun folder perusahaan "${folderCompanyUpper}"...`);
+          const companyFolderId = await getOrCreateFolder(token, folderCompanyUpper, voucherAppId);
+
+          // 3. Get or create year folder under company folder
+          setSaveProgress(`3/7. Menyusun folder tahun "${yearStr}"...`);
+          const yearId = await getOrCreateFolder(token, yearStr, companyFolderId);
+
+          // 4. Get or create month folder under year folder
+          setSaveProgress(`4/7. Menyusun folder bulan "${monthStr}"...`);
+          const monthId = await getOrCreateFolder(token, monthStr, yearId);
+
+          // 5. Get or create day folder under month folder
+          setSaveProgress(`5/7. Menyusun folder tanggal "${dayStr}"...`);
+          const dayId = await getOrCreateFolder(token, dayStr, monthId);
+
+          // 6. Get or create custom transaction folder under day folder named (Jenis_Pengajuan - Dibayarkan_Kepada)
+          const cleanJenisFolder = (selectedSubmission.jenisPengajuan || 'Non-Kategori').trim().replace(/[\/\\?%*:|"<>.]/g, '');
+          const cleanPenerimaFolder = (selectedSubmission.dibayarkanKepada || 'Penerima').trim().replace(/[\/\\?%*:|"<>.]/g, '');
+          const txFolderName = `${cleanJenisFolder} - ${cleanPenerimaFolder}`;
+
+          setSaveProgress(`6/7. Membuka folder transaksi "${txFolderName}"...`);
+          const targetFolderId = await getOrCreateFolder(token, txFolderName, dayId);
+
+          // 7. Get or create folder "Bukti Pembayaran" inside targetFolderId
+          setSaveProgress('7/7. Membuka folder khusus "Bukti Pembayaran"...');
+          const folderBuktiBayarId = await getOrCreateFolder(token, 'Bukti Pembayaran', targetFolderId);
+
+          // Convert bytes and handle image to pdf transformation
+          setSaveProgress('Menyiapkan file bukti pembayaran...');
+          let fileBytes: Uint8Array;
+          let mime = 'application/octet-stream';
+
+          if (uploadedFile.fileObject) {
+            fileBytes = new Uint8Array(await uploadedFile.fileObject.arrayBuffer());
+            mime = uploadedFile.fileObject.type || 'application/octet-stream';
+          } else {
+            // Parse base64 fallback
+            const base64Content = uploadedFile.base64.split(',')[1];
+            const binaryString = window.atob(base64Content);
+            fileBytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              fileBytes[i] = binaryString.charCodeAt(i);
+            }
+            if (uploadedFile.base64.startsWith('data:')) {
+              mime = uploadedFile.base64.split(';')[0].split(':')[1];
+            }
+          }
+
+          let paymentExt = ext;
+          const originalName = uploadedFile.name;
+          
+          if (mime.startsWith('image/') || /\.jpe?g|\.png/i.test(originalName)) {
+            try {
+              setSaveProgress('Mengonversi gambar bukti transfer ke dokumen PDF...');
+              fileBytes = await convertImageToPdf(fileBytes, mime);
+              mime = 'application/pdf';
+              paymentExt = '.pdf';
+            } catch (convErr) {
+              console.warn('Gagal merubah gambar bukti pembayaran ke PDF:', convErr);
+            }
+          }
+
+          const driveFileName = `Bukti Pembayaran - (${cleanJenis} - ${cleanPenerima})${paymentExt}`;
+          
+          setSaveProgress('Mengunggah berkas bukti pembayaran langsung ke Google Drive...');
+          const uploadResult = await uploadFileToFolder(
+            token,
+            driveFileName,
+            mime,
+            fileBytes,
+            folderBuktiBayarId
+          );
+
+          finalBuktiPembayaran = {
+            url: uploadResult.url,
+            name: uploadResult.name
+          };
+
+          finalDriveFiles.push({
+            url: uploadResult.url,
+            name: uploadResult.name,
+            isBuktiPembayaran: true
+          });
+
+          console.log('[Drive Upload] Upload Bukti Pembayaran berhasil:', uploadResult);
+        } catch (driveErr: any) {
+          console.error('[Drive Upload] Error syncing to Google Drive:', driveErr);
+          if (driveErr.message === 'UNAUTHORIZED_DRIVE_TOKEN') {
+            setErrorText('Sesi Google Drive berakhir. Silakan hubungkan kembali Google Drive di bar status.');
+            setIsLoading(false);
+            return;
+          } else {
+            // Soft failure, add local fallback and log
+            finalDriveFiles.push({
+              url: uploadedFile.base64,
+              name: formattedFileName,
+              isBuktiPembayaran: true
+            });
+          }
+        }
+      } else {
+        // Fallback or upload without Drive synced
+        finalDriveFiles.push({
+          url: uploadedFile.base64,
+          name: formattedFileName,
+          isBuktiPembayaran: true
+        });
+      }
 
       const updatedSubmission: Submission = {
         ...selectedSubmission,
         status: 'Lunas',
-        buktiPembayaran: {
-          url: uploadedFile.base64,
-          name: formattedFileName
-        },
-        // Also append to googleDriveFiles array so it renders organically as attachment page
-        googleDriveFiles: [
-          ...(selectedSubmission.googleDriveFiles || []).filter(
-            f => !f.isBuktiPembayaran
-          ),
-          {
-            url: uploadedFile.base64,
-            name: formattedFileName,
-            isBuktiPembayaran: true
-          }
-        ]
+        buktiPembayaran: finalBuktiPembayaran,
+        googleDriveFiles: finalDriveFiles
       };
 
-      // Save to server
+      setSaveProgress('Memperbarui data status transaksi di Firestore...');
+
+      // Push to Firestore
       if (isFirebaseConfigured()) {
-        // Find user company details inside other entries if available or defaults
-        let finalCompanyId = 'nmsa';
-        let finalCompanyName = 'PT Nusantara Mineral Sukses Abadi';
-
-        // Check if there is a company detail stored in database or retrieve from locals
-        try {
-          const matched = localSubmissions.find(s => s.id === selectedSubmission.id);
-          // If we had company meta in matched, we might extract it
-        } catch {}
-
+        const finalCompanyId = selectedSubmission.companyId || 'nmsa';
+        const finalCompanyName = selectedSubmission.companyName || 'PT Nusantara Mineral Sukses Abadi';
         await saveSubmissionToFirestore(updatedSubmission, finalCompanyId, finalCompanyName);
       }
 
-      // Update local listing states to persist immediately
+      // Sync local listing states
       const nextList = localSubmissions.map(sub => 
         sub.id === selectedSubmission.id ? updatedSubmission : sub
       );
@@ -194,11 +590,11 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
       setLocalSubmissions(nextList);
       onUpdateSubmissions(nextList);
       
-      // Save directly to localStorage as a fallback client state
+      // Save directly to localStorage as backup
       try {
         localStorage.setItem('NUSANTARA_HO_SUBMISSIONS', JSON.stringify(nextList));
       } catch (localSaveErr) {
-        console.warn(localSaveErr);
+        console.warn('LocalStorage save failure:', localSaveErr);
       }
 
       setSuccessCode(selectedSubmission.kode || 'BKK-VOUCHER');
@@ -207,391 +603,618 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
       setSelectedSubmission(null);
     } catch (err: any) {
       console.error(err);
-      setErrorText(`Gagal menyimpan bukti pembayaran: ${err?.message || err}`);
+      setErrorText(`Gagal memproses bukti pembayaran: ${err?.message || err}`);
     } finally {
       setIsLoading(false);
+      setSaveProgress('');
     }
   };
 
-  // Filter Submissions
+  // Compile unique lists for drop-down filters dynamically
+  const uniqueLocations = Array.from(new Set(localSubmissions.map(s => s.lokasi).filter(Boolean)));
+  const uniqueJenis = Array.from(new Set(localSubmissions.map(s => s.jenisPengajuan).filter(Boolean)));
+
+  // Filter Submissions based on search + filters
   const filteredSubmissions = localSubmissions.filter(sub => {
+    // 1. Text Search query filter
     const q = searchQuery.toLowerCase();
     const matchesCode = (sub.kode || '').toLowerCase().includes(q);
     const matchesRecipient = (sub.dibayarkanKepada || '').toLowerCase().includes(q);
     const matchesType = (sub.jenisPengajuan || '').toLowerCase().includes(q);
     
-    // Check item descriptions
+    // Check item details of each submission
     const matchesItems = sub.items?.some(item => 
       (item.item || '').toLowerCase().includes(q) || 
       (item.keterangan || '').toLowerCase().includes(q)
     );
 
-    return matchesCode || matchesRecipient || matchesType || matchesItems;
+    const matchesSearch = matchesCode || matchesRecipient || matchesType || matchesItems || q === '';
+
+    // 2. Status Filter
+    const matchesStatus = 
+      filterStatus === 'All' ? true :
+      filterStatus === 'Lunas' ? sub.status === 'Lunas' :
+      sub.status !== 'Lunas';
+
+    // 3. Location Filter
+    const matchesLocation = 
+      filterLocation === 'All' ? true : 
+      sub.lokasi === filterLocation;
+
+    // 4. Category / Jenis Filter
+    const matchesJenis = 
+      filterJenis === 'All' ? true : 
+      sub.jenisPengajuan === filterJenis;
+
+    return matchesSearch && matchesStatus && matchesLocation && matchesJenis;
   });
 
-  // Group pending/unpaid first
-  const pendingSubmissions = filteredSubmissions.filter(sub => sub.status !== 'Lunas');
-  const finishedSubmissions = filteredSubmissions.filter(sub => sub.status === 'Lunas');
+  // Sort submissions based on dropdown choice
+  const sortedSubmissions = [...filteredSubmissions].sort((a, b) => {
+    if (sortBy === 'tanggal-desc') {
+      return new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime();
+    }
+    if (sortBy === 'tanggal-asc') {
+      return new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime();
+    }
+    if (sortBy === 'nominal-desc') {
+      return getSubmissionTotal(b) - getSubmissionTotal(a);
+    }
+    if (sortBy === 'nominal-asc') {
+      return getSubmissionTotal(a) - getSubmissionTotal(b);
+    }
+    return 0;
+  });
 
-  const showVoucherList = searchQuery.trim().length > 0 || localSubmissions.length > 0;
+  // Calculate high level KPI totals for the finance dashboard view
+  const totalSubmissionsCount = localSubmissions.length;
+  const unpaidCount = localSubmissions.filter(s => s.status !== 'Lunas').length;
+  const paidCount = localSubmissions.filter(s => s.status === 'Lunas').length;
+  const outstandingDebtValue = localSubmissions
+    .filter(s => s.status !== 'Lunas')
+    .reduce((sum, s) => sum + getSubmissionTotal(s), 0);
 
   return (
-    <div className="max-w-4xl mx-auto py-4 px-2 sm:px-6">
+    <div className="max-w-7xl mx-auto py-2 px-1 sm:px-3">
       
-      {/* CARD LAYOUT OVERALL */}
+      {/* CARD CONTEXT */}
       <div className="bg-white rounded-2xl border border-stone-200 shadow-xl overflow-hidden transition-all duration-300">
         
-        {/* TOP STATUS BAR ACCENT */}
-        <div className="h-2 bg-gradient-to-r from-stone-800 via-[#D4AF37] to-stone-900"></div>
+        {/* PREMIUM GOLD TOP BAR ACCENT */}
+        <div className="h-2 bg-gradient-to-r from-stone-850 via-[#D4AF37] to-stone-900"></div>
 
-        {/* HEADER AREA */}
-        <div className="p-6 sm:p-8 border-b border-stone-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-stone-50/50">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="p-1 px-2.5 bg-[#D4AF37]/10 text-[#a58421] rounded-full text-[10px] font-mono font-bold tracking-wider uppercase">
-                Fitur Public Uploader
+        {/* INTERACTIVE COMPONENT HEADER */}
+        <div className="p-6 sm:p-8 border-b border-stone-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-stone-50/50">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="p-1 px-3 bg-amber-500/10 text-[#a58421] rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border border-amber-500/20">
+                Divisi Keuangan • Nusantara Portal
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight font-sans">
-              Formulir Input Bukti Transfer HO
+              Dashboard Verifikasi Bukti Transfer HO
             </h1>
-            <p className="text-xs sm:text-sm text-stone-500 font-medium font-sans mt-1">
-              Unggah bukti pembayaran bank/transfer untuk memverifikasi voucher transaksi secara otomatis.
+            <p className="text-xs sm:text-sm text-stone-500 font-medium">
+              Manajemen kompilasi voucher transaksi Nusantara Mineral. Unggah tanda bukti/struk untuk menyelesaikan pelunasan.
             </p>
           </div>
           
           <button
             onClick={onBack}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 border border-stone-200 hover:border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-bold rounded-xl shadow-3xs cursor-pointer transition"
+            className="flex items-center justify-center gap-1.5 px-4.5 py-2.5 border border-stone-200 hover:border-stone-350 bg-white hover:bg-stone-50 text-stone-700 text-xs font-bold rounded-xl transition cursor-pointer font-mono"
           >
-            <ArrowLeft size={14} />
-            <span>Kembali Ke Portal</span>
+            <ArrowLeft size={13} />
+            <span>KEMBALI KE PORTAL UTAMA</span>
           </button>
         </div>
 
-        {/* IF SUCCESS COMPONENT */}
-        {isSuccess ? (
-          <div className="p-8 text-center space-y-6 max-w-xl mx-auto my-6 animate-fade-in">
-            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm border border-emerald-100">
-              <CheckCircle size={32} className="stroke-[2.5]" />
-            </div>
+        {/* MAIN BODY AREA */}
+        <div className="p-4 sm:p-6 space-y-6">
+          
+          {/* KPI BLOCKS: QUICK REVIEW STATS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold text-stone-900">Bukti Transfer Berhasil Disimpan!</h2>
-              <p className="text-stone-500 text-sm leading-relaxed">
-                Berkas bukti pembayaran untuk voucher <strong className="font-mono text-stone-800">{successCode}</strong> telah diunggah dan disimpan ke database cloud. Status voucher otomatis divalidasi menjadi <span className="bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full text-xs">LUNAS</span>.
-              </p>
+            <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 flex items-center justify-between shadow-2xs">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-stone-400 font-bold uppercase tracking-wider block">Total Transaksi</span>
+                <span className="text-xl font-black text-stone-900">{totalSubmissionsCount} Voucher</span>
+              </div>
+              <div className="p-2.5 bg-stone-100 rounded-lg text-stone-600">
+                <SlidersHorizontal size={16} />
+              </div>
             </div>
 
-            <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-              <button
-                onClick={() => {
-                  setIsSuccess(false);
-                  setSuccessCode('');
-                }}
-                className="px-6 py-2.5 bg-gradient-to-r from-stone-800 to-stone-900 hover:from-stone-900 hover:to-black text-white rounded-xl text-xs font-bold shadow-xs transition duration-200 cursor-pointer"
-              >
-                Unggah Bukti Lainnya
-              </button>
-              
-              <button
-                onClick={onBack}
-                className="px-6 py-2.5 border border-stone-200 hover:bg-stone-50 text-stone-700 rounded-xl text-xs font-bold transition cursor-pointer"
-              >
-                Ke Menu Utama
-              </button>
+            <div className="bg-amber-50/40 rounded-xl p-4 border border-amber-200 flex items-center justify-between shadow-2xs">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-[#a58421] font-bold uppercase tracking-wider block">Belum Lunas (Pending)</span>
+                <span className="text-xl font-black text-amber-700">{unpaidCount} Voucher</span>
+              </div>
+              <div className="p-2.5 bg-amber-50 rounded-lg text-[#a58421]">
+                <Clock size={16} />
+              </div>
             </div>
+
+            <div className="bg-emerald-50/30 rounded-xl p-4 border border-emerald-150 flex items-center justify-between shadow-2xs">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-emerald-700 font-bold uppercase tracking-wider block">Lunas (Paid)</span>
+                <span className="text-xl font-black text-emerald-800">{paidCount} Voucher</span>
+              </div>
+              <div className="p-2.5 bg-emerald-50 rounded-lg text-emerald-700">
+                <CheckCircle size={16} />
+              </div>
+            </div>
+
+            <div className="bg-stone-905 bg-stone-900 text-stone-100 rounded-xl p-4 border border-stone-850 flex items-center justify-between shadow-2xs">
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-stone-400 font-bold uppercase tracking-wider block">Total Tagihan Pending</span>
+                <span className="text-lg font-black text-amber-400 font-mono tracking-tight">{formatRupiah(outstandingDebtValue)}</span>
+              </div>
+              <div className="p-2.5 bg-stone-800 rounded-lg text-amber-400">
+                <Check size={16} />
+              </div>
+            </div>
+
           </div>
-        ) : (
-          <div className="p-6 sm:p-8 space-y-8">
-            
-            {/* STEP 1: CHOOSE PROTOCOL / VOUCHER LIST */}
-            <div className="space-y-3">
-              <label className="block text-xs font-bold font-mono text-stone-400 uppercase tracking-widest">
-                Langkah 1: Cari & Pilih Pengajuan Voucher HO
-              </label>
+
+          {/* ADVANCED FILTER TOOLBAR */}
+          <div className="p-5 bg-stone-50 rounded-2xl border border-stone-200 space-y-4">
+            <div className="flex items-center gap-2 border-b border-stone-200 pb-2">
+              <Filter size={14} className="text-amber-500" />
+              <h2 className="text-xs font-mono font-black text-stone-800 uppercase tracking-widest">Piringan Filter & Penyortiran Rinci</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
               
-              <div className="relative">
-                <Search className="absolute left-3.5 top-3 text-stone-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Cari berdasarkan Kode Voucher, Penerima / Rekening, atau Nominal..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-11 pr-4 py-2.5 bg-stone-50 text-stone-900 border border-stone-200 rounded-xl focus:border-stone-400 focus:outline-hidden transition text-sm shadow-3xs placeholder:text-stone-400"
-                />
+              {/* Search String */}
+              <div className="md:col-span-4 space-y-1">
+                <label className="block text-[10px] font-mono font-bold text-stone-500 uppercase">Kata Kunci / Pencarian Cepat</label>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-2.5 text-stone-400" />
+                  <input
+                    type="text"
+                    placeholder="Kode, penerima, atau keterangan..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-1.5 bg-white text-xs text-stone-900 border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400"
+                  />
+                </div>
               </div>
 
-              {/* LIVE DATABASE SELECTION DROP MENU */}
-              {showVoucherList && (
-                <div className="max-h-60 overflow-y-auto border border-stone-200 rounded-xl bg-white shadow-md divide-y divide-stone-100">
-                  
-                  {/* PENDING HO TRANSACTION HEAD */}
-                  {pendingSubmissions.length > 0 && (
-                    <div className="bg-amber-50/50 px-4 py-2 text-[10px] font-bold font-mono text-[#a58421] flex items-center justify-between sticky top-0 bg-white">
-                      <span>BELUM LUNAS ({pendingSubmissions.length}) - DIREKOMENDASIKAN</span>
-                      <CornerDownRight size={10} />
-                    </div>
-                  )}
+              {/* Status */}
+              <div className="md:col-span-2 space-y-1">
+                <label className="block text-[10px] font-mono font-bold text-stone-500 uppercase">Status Pembayaran</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className="w-full bg-white border border-stone-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none"
+                >
+                  <option value="All">Semua Transaksi</option>
+                  <option value="Belum Lunas">Belum Lunas (Pending)</option>
+                  <option value="Lunas">Lunas (Paid)</option>
+                </select>
+              </div>
 
-                  {pendingSubmissions.map((sub) => {
-                    const totalVoucher = sub.items?.reduce((sum, i) => sum + (Number(i.total) || 0), 0) || 0;
+              {/* Location */}
+              <div className="md:col-span-2 space-y-1">
+                <label className="block text-[10px] font-mono font-bold text-stone-500 uppercase">Lokasi Pengajuan</label>
+                <select
+                  value={filterLocation}
+                  onChange={(e) => setFilterLocation(e.target.value)}
+                  className="w-full bg-white border border-stone-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none"
+                >
+                  <option value="All">Semua Lokasi</option>
+                  {uniqueLocations.map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Category */}
+              <div className="md:col-span-2 space-y-1">
+                <label className="block text-[10px] font-mono font-bold text-stone-500 uppercase">Kategori / Jenis</label>
+                <select
+                  value={filterJenis}
+                  onChange={(e) => setFilterJenis(e.target.value)}
+                  className="w-full bg-white border border-stone-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none"
+                >
+                  <option value="All">Semua Kategori</option>
+                  {uniqueJenis.map(j => (
+                    <option key={j} value={j}>{j}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Order Sort */}
+              <div className="md:col-span-2 space-y-1">
+                <label className="block text-[10px] font-mono font-bold text-stone-500 uppercase">Sortir Urutan</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="w-full bg-white border border-stone-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none"
+                >
+                  <option value="tanggal-desc">📆 Tanggal Terbaru</option>
+                  <option value="tanggal-asc">📆 Tanggal Terlama</option>
+                  <option value="nominal-desc">💰 Nominal Tertinggi</option>
+                  <option value="nominal-asc">💰 Nominal Terendah</option>
+                </select>
+              </div>
+
+            </div>
+          </div>
+
+          {/* DUAL COLUMN SPLIT BOARD */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* LEFT SIDE: FILTERED MASTER LIST OF COPIES (2 COLUMNS) */}
+            <div className="lg:col-span-2 space-y-3">
+              <div className="flex items-center justify-between pb-1">
+                <h3 className="text-xs font-mono font-black text-stone-400 uppercase tracking-widest block">
+                  Daftar Voucher Ditemukan ({sortedSubmissions.length})
+                </h3>
+                <span className="text-[10px] text-stone-400 bg-stone-100 px-2.5 py-0.5 rounded-full font-bold">
+                  Klik item untuk mengunggah bukti bayar
+                </span>
+              </div>
+
+              {isLoading ? (
+                <div className="p-16 border rounded-xl bg-white text-center text-stone-400 text-xs">
+                  <span className="inline-block w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mb-3"></span>
+                  <p className="font-mono">Menyelaraskan data real-time dengan server cloud...</p>
+                </div>
+              ) : sortedSubmissions.length === 0 ? (
+                <div className="p-16 border-2 border-dashed border-stone-200 rounded-xl bg-white text-center text-stone-450 text-xs space-y-2">
+                  <SlidersHorizontal size={24} className="mx-auto text-stone-300" />
+                  <p className="font-bold">Tidak Menemukan Data Transaksi</p>
+                  <p className="text-[11px] text-stone-400">Silakan sesuaikan filter pencarian, status, atau kategori di atas.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
+                  {sortedSubmissions.map((sub) => {
+                    const totalVoucher = getSubmissionTotal(sub);
                     const isSelected = selectedSubmission?.id === sub.id;
-                    
+                    const isLunas = sub.status === 'Lunas';
+
                     return (
-                      <button
+                      <div
                         key={sub.id}
-                        type="button"
                         onClick={() => {
                           setSelectedSubmission(sub);
                           setErrorText('');
+                          setIsSuccess(false);
                         }}
-                        className={`w-full text-left p-3.5 sm:px-5 flex justify-between items-center transition cursor-pointer ${
-                          isSelected ? 'bg-amber-50/30 font-semibold border-l-4 border-[#D4AF37]' : 'hover:bg-stone-50/80'
+                        className={`p-4 border rounded-xl bg-white transition shadow-3xs cursor-pointer flex flex-col sm:flex-row gap-3 sm:items-center justify-between group text-xs text-stone-600 ${
+                          isSelected 
+                            ? 'border-amber-450 ring-2 ring-amber-100 bg-amber-50/10' 
+                            : 'border-stone-200 hover:border-stone-350 hover:bg-stone-50/40'
                         }`}
                       >
-                        <div className="space-y-1 pr-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-stone-900 font-bold">{sub.kode || 'BKK-KODE'}</span>
-                            <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[9px] font-bold font-mono rounded">Pending</span>
+                        <div className="space-y-1.5 flex-1 min-w-0 pr-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-stone-900 font-bold text-sm tracking-tight group-hover:text-amber-700 transition">
+                              {sub.kode || 'BKK-VOUCHER'}
+                            </span>
+                            
+                            <span className="text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-mono font-bold">
+                              {sub.lokasi || 'N/A'}
+                            </span>
+
+                            <span className="text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-mono truncate max-w-[140px]">
+                              {sub.jenisPengajuan || 'Non-Kategori'}
+                            </span>
+
+                            {/* Clear indicator badges requested by client */}
+                            {isLunas ? (
+                              <span className="ml-auto sm:ml-0 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black font-mono rounded uppercase border border-emerald-250">
+                                <CheckCircle size={10} className="fill-emerald-50" />
+                                LUNAS
+                              </span>
+                            ) : (
+                              <span className="ml-auto sm:ml-0 inline-flex items-center gap-1 px-2 py-0.5 bg-amber-55 bg-amber-50 text-[#a58421] text-[10px] font-black font-mono rounded uppercase border border-amber-250 animate-pulse">
+                                <Clock size={10} />
+                                BELUM LUNAS
+                              </span>
+                            )}
                           </div>
-                          <div className="text-xs text-stone-500">
-                            Penerima: <strong className="text-stone-700 font-medium">{sub.dibayarkanKepada || '-'}</strong> | {formatDateIndonesian(sub.tanggal)}
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-stone-500 font-sans mt-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <User size={12} className="text-stone-400 shrink-0" />
+                              <span className="truncate">Kepada: <strong className="text-stone-750 font-medium">{sub.dibayarkanKepada || '-'}</strong></span>
+                            </div>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <CalendarDays size={12} className="text-stone-400 shrink-0" />
+                              <span>Tanggal: {formatDateIndonesian(sub.tanggal)}</span>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right text-xs font-mono font-bold text-stone-900 shrink-0">
-                          {formatRupiah(totalVoucher)}
+
+                        {/* Nominal right box */}
+                        <div className="text-left sm:text-right font-mono shrink-0 sm:pl-3 border-t sm:border-t-0 sm:border-l border-stone-100 pt-2 sm:pt-0">
+                          <span className="text-[9px] text-stone-400 font-bold block">NOMINAL VOUCHER</span>
+                          <span className={`text-sm sm:text-md font-black tracking-tight ${isLunas ? 'text-stone-800' : 'text-stone-900'}`}>
+                            {formatRupiah(totalVoucher)}
+                          </span>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
-
-                  {/* PAID SELECTION AS REFERENCE WITH OPTIONAL REUPLOAD */}
-                  {finishedSubmissions.length > 0 && (
-                    <div className="bg-stone-50 px-4 py-2 text-[10px] font-bold font-mono text-stone-500 flex items-center justify-between sticky top-0 bg-white">
-                      <span>SUDAH LUNAS ({finishedSubmissions.length}) - UNTUK REUPLOAD</span>
-                      <CheckCircle size={10} className="text-emerald-500" />
-                    </div>
-                  )}
-
-                  {finishedSubmissions.map((sub) => {
-                    const totalVoucher = sub.items?.reduce((sum, i) => sum + (Number(i.total) || 0), 0) || 0;
-                    const isSelected = selectedSubmission?.id === sub.id;
-                    
-                    return (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSubmission(sub);
-                          setErrorText('');
-                        }}
-                        className={`w-full text-left p-3.5 sm:px-5 flex justify-between items-center transition cursor-pointer ${
-                          isSelected ? 'bg-emerald-50/10 font-semibold border-l-4 border-emerald-500' : 'hover:bg-stone-50/80'
-                        }`}
-                      >
-                        <div className="space-y-1 pr-4">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-stone-500 font-medium line-through">{sub.kode}</span>
-                            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-bold font-mono rounded">Lunas</span>
-                          </div>
-                          <div className="text-xs text-stone-400">
-                            Penerima: <strong className="text-stone-650 font-medium">{sub.dibayarkanKepada || '-'}</strong> | {formatDateIndonesian(sub.tanggal)}
-                          </div>
-                        </div>
-                        <div className="text-right text-xs font-mono font-medium text-stone-400 shrink-0">
-                          {formatRupiah(totalVoucher)}
-                        </div>
-                      </button>
-                    );
-                  })}
-
-                  {filteredSubmissions.length === 0 && (
-                    <div className="p-8 text-center text-stone-400 text-xs font-sans">
-                      Tidak menemukan voucher yang cocok dengan kueri "{searchQuery}"
-                    </div>
-                  )}
                 </div>
               )}
             </div>
 
-            {/* ERROR DISPLAY BOX */}
-            {errorText && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2 animate-pulse">
-                <AlertCircle size={14} className="shrink-0" />
-                <span>{errorText}</span>
-              </div>
-            )}
+            {/* RIGHT SIDE: SELECTED CONTEXT WORKSPACE & DRAG-DROP UPLOADER */}
+            <div className="lg:col-span-1 space-y-4">
+              <h3 className="text-xs font-mono font-black text-stone-400 uppercase tracking-widest block">
+                Workspace Bukti Pembayaran
+              </h3>
 
-            {/* SELECTED VOUCHER DISPLAY DATA CARD */}
-            {selectedSubmission && (
-              <div className="bg-stone-50 rounded-xl p-5 border border-stone-200 flex flex-col md:flex-row justify-between gap-6 animate-fade-in">
-                <div className="space-y-4">
-                  <div>
-                    <span className="text-[10px] bg-stone-200 text-stone-600 font-mono font-bold uppercase py-0.5 px-2 rounded-md">
-                      Detail Penerima Bukti
+              {/* GOOGLE DRIVE INTEGRATION STATUS */}
+              <div className="border border-stone-200 rounded-2xl bg-stone-50 p-4 space-y-3 shadow-3xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Cloud size={15} className={isDriveConnected ? "text-emerald-500 shrink-0" : "text-stone-400 shrink-0"} />
+                    <span className="text-[10px] font-mono font-black text-stone-850 uppercase tracking-widest">
+                      KONEKSI GOOGLE DRIVE
                     </span>
-                    <h3 className="text-md sm:text-lg font-black text-stone-900 font-sans tracking-tight mt-1.5">
-                      {selectedSubmission.kode || 'BKK-VOUCHER'}
-                    </h3>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-stone-600 font-sans">
-                    <div className="flex items-center gap-2">
-                      <User size={14} className="text-stone-450 shrink-0" />
-                      <span>Penerima: <strong className="text-stone-800">{selectedSubmission.dibayarkanKepada || '-'}</strong></span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Calendar size={14} className="text-stone-450 shrink-0" />
-                      <span>Tanggal: <strong className="text-stone-850">{formatDateIndonesian(selectedSubmission.tanggal)}</strong></span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Building size={14} className="text-stone-450 shrink-0" />
-                      <span>Lokasi: <strong className="text-stone-850">{selectedSubmission.lokasi || 'Lt.1'}</strong></span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Clock size={14} className="text-stone-450 shrink-0" />
-                      <span>Status: 
-                        <strong className={`ml-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-mono ${
-                          selectedSubmission.status === 'Lunas' 
-                            ? 'bg-emerald-100 text-emerald-800' 
-                            : 'bg-amber-100 text-[#7a5913]'
-                        }`}>
-                          {selectedSubmission.status || 'Belum Lunas'}
-                        </strong>
-                      </span>
-                    </div>
-                  </div>
+                  {isDriveConnected ? (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-mono font-black text-emerald-700 bg-emerald-50 rounded border border-emerald-250 uppercase px-2 py-0.5">
+                       TERSAMBUNG
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-mono font-black text-amber-700 bg-amber-50 rounded border border-amber-250 uppercase px-2 py-0.5 animate-pulse">
+                       TERPUTUS
+                    </span>
+                  )}
                 </div>
 
-                <div className="md:text-right flex flex-col md:justify-between shrink-0 font-sans min-h-16">
-                  <div className="text-[11px] font-mono font-bold text-stone-400">NOMINAL AKUMULATIF</div>
-                  <div className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight font-mono mt-1">
-                    {formatRupiah(selectedSubmission.items?.reduce((span, u) => span + (Number(u.total) || 0), 0) || 0)}
+                <p className="text-[10px] text-stone-500 leading-relaxed font-sans">
+                  {isDriveConnected 
+                    ? 'Unggahan bukti pembayaran akan otomatis ditempatkan ke dalam folder Voucher-APP utama Google Drive Anda secara terstruktur.'
+                    : 'Aktifkan Google Drive agar seluruh file bukti pembayaran sinkron otomatis ke folder transaksi utama.'
+                  }
+                </p>
+
+                {!isDriveConnected && (
+                  <button
+                    type="button"
+                    onClick={handleConnectDrive}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-amber-50 hover:bg-amber-100 text-[#a58421] border border-amber-200 rounded-xl text-[10px] font-mono font-black uppercase transition-all duration-150 active:scale-[0.98] cursor-pointer shadow-3xs"
+                  >
+                    <Link size={12} className="text-amber-500 animate-pulse" />
+                    Hubungkan Google Drive
+                  </button>
+                )}
+
+                {isDriveConnected && (
+                  <div className="flex items-center justify-between text-[10px] font-mono font-bold text-stone-400 pt-0.5">
+                    <span>Target Folder Utama:</span>
+                    <span className="text-stone-700 bg-white px-2 py-0.5 border border-stone-150 rounded font-mono text-[9px]">Voucher-APP/</span>
                   </div>
-                </div>
+                )}
               </div>
-            )}
 
-            {/* STEP 2: FILE UPLOAD DROPZONE */}
-            <div className="space-y-3">
-              <label className="block text-xs font-bold font-mono text-stone-400 uppercase tracking-widest">
-                Langkah 2: Unggah Berkas Bukti Transfer
-              </label>
-
-              {uploadedFile ? (
-                // FILE HAS BEEN UPLOADED PREVIEW AREA
-                <div className="border border-stone-200 rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <div className="p-3 bg-stone-50 border-b border-stone-100 flex items-center justify-between text-xs text-stone-700">
-                    <div className="flex items-center gap-2 font-mono truncate max-w-[280px] sm:max-w-none">
-                      <FileText size={15} className="text-amber-500" />
-                      <span className="font-bold truncate">{uploadedFile.name}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRemoveFile}
-                      className="p-1 text-stone-400 hover:text-rose-600 hover:bg-stone-100 rounded-md transition cursor-pointer"
-                      title="Hapus / ganti lampiran"
-                    >
-                      <X size={16} />
-                    </button>
+              {isSuccess && (
+                <div className="p-5 border border-emerald-200 bg-emerald-50/40 rounded-2xl text-center space-y-4 animate-fade-in shadow-2xs">
+                  <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mx-auto border border-emerald-200">
+                    <CheckCircle size={20} className="stroke-[2.5]" />
                   </div>
+                  <div className="space-y-1.5">
+                    <h4 className="text-xs font-black text-stone-900 uppercase tracking-wider font-mono">SIMPAN SUKSES!</h4>
+                    <p className="text-stone-600 text-[11px] leading-relaxed">
+                      Bukti transfer untuk voucher <strong className="font-mono text-stone-850">{successCode}</strong> telah diunggah & dicatat ke cloud server.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsSuccess(false)}
+                    className="w-full py-2 bg-stone-900 hover:bg-stone-850 text-white font-mono text-[10px] font-bold uppercase tracking-wider rounded-lg transition"
+                  >
+                    Unggah Bukti Transaksi Lain
+                  </button>
+                </div>
+              )}
+
+              {!isSuccess && !selectedSubmission && (
+                <div className="p-8 border-2 border-dashed border-stone-200 rounded-2xl bg-stone-50/50 text-center text-stone-400 text-xs flex flex-col items-center justify-center min-h-[340px] space-y-3">
+                  <div className="p-3 bg-white rounded-xl shadow-3xs border border-stone-150">
+                    <ListFilter size={20} className="text-[#D4AF37]" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-bold text-stone-700">Tidak Ada Item Terpilih</p>
+                    <p className="text-[10px] text-stone-400 px-3">
+                      Silakan pilih salah satu data transaksi dari kompilasi menu di sebelah kiri untuk melihat rincian pengajuan dan modul input bukti bayar.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!isSuccess && selectedSubmission && (
+                <div className="border border-stone-200 rounded-2xl bg-white p-4.5 space-y-4 shadow-sm animate-fade-in">
                   
-                  {/* PREVIEW FRAME */}
-                  <div className="p-4 bg-stone-50 flex items-center justify-center min-h-48 max-h-96 overflow-hidden relative">
-                    {uploadedFile.base64.startsWith('data:image/') ? (
-                      <img
-                        src={uploadedFile.base64}
-                        alt="Bukti Transfer Preview"
-                        className="max-h-80 object-contain rounded-md border border-stone-200 shadow-sm"
-                      />
+                  {/* Miniature Detail card */}
+                  <div className="bg-stone-50/80 p-3.5 rounded-xl border border-stone-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-stone-400 font-bold uppercase tracking-wider">RINCIAN TRANS-VOUCHER</span>
+                      <button 
+                        onClick={() => setSelectedSubmission(null)}
+                        className="text-stone-400 hover:text-stone-600 p-0.5 rounded transition"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-stone-900 font-bold font-mono text-sm">
+                        <span>{selectedSubmission.kode}</span>
+                        {selectedSubmission.status === 'Lunas' ? (
+                          <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-bold uppercase rounded font-mono">
+                            Lunas
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-amber-50 text-[#a58421] text-[9px] font-bold uppercase rounded font-mono animate-pulse">
+                            Belum Lunas
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-stone-500">{formatDateIndonesian(selectedSubmission.tanggal)}</p>
+                    </div>
+
+                    <div className="h-px bg-stone-200" />
+
+                    <div className="space-y-1.5 text-[11px] text-stone-600">
+                      <div className="flex justify-between">
+                        <span className="text-stone-400 font-medium">Dibayarkan Kepada:</span>
+                        <strong className="text-stone-800">{selectedSubmission.dibayarkanKepada || '-'}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-stone-400 font-medium">Kategori:</span>
+                        <strong className="text-stone-800">{selectedSubmission.jenisPengajuan || '-'}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-stone-400 font-medium">Lokasi:</span>
+                        <strong className="text-stone-800">{selectedSubmission.lokasi || '-'}</strong>
+                      </div>
+                      {selectedSubmission.rekeningTujuan && (
+                        <div className="flex justify-between">
+                          <span className="text-stone-400 font-medium">Rekening:</span>
+                          <strong className="text-stone-800 tracking-tight font-mono text-[10px]">{selectedSubmission.rekeningTujuan}</strong>
+                        </div>
+                      )}
+                      <div className="pt-1.5 flex justify-between items-baseline border-t border-stone-200/55">
+                        <span className="text-stone-400 text-[10px] font-black uppercase tracking-wider font-mono">TOTAL NILAI:</span>
+                        <strong className="text-sm font-black text-stone-900 font-mono">
+                          {formatRupiah(getSubmissionTotal(selectedSubmission))}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Drag drop zone for uploaded Receipt */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-mono font-bold text-stone-400 uppercase tracking-widest">
+                      UPLOAD BUKTI TRANSFER (KEUANGAN)
+                    </label>
+
+                    {uploadedFile ? (
+                      <div className="border border-stone-200 rounded-xl overflow-hidden bg-stone-50">
+                        <div className="p-2 bg-stone-150/75 border-b border-stone-200 flex items-center justify-between text-[11px] text-stone-700">
+                          <div className="flex items-center gap-1.5 font-mono truncate max-w-[190px]">
+                            <FileText size={13} className="text-amber-500 shrink-0" />
+                            <span className="font-bold truncate">{uploadedFile.name}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleRemoveFile}
+                            className="p-1 text-stone-400 hover:text-rose-600 hover:bg-stone-200 rounded transition cursor-pointer"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                        <div className="p-3 flex items-center justify-center min-h-32 max-h-48 overflow-hidden bg-stone-50">
+                          {uploadedFile.base64.startsWith('data:image/') ? (
+                            <img
+                              src={uploadedFile.base64}
+                              alt="Bukti Bayar Preview"
+                              className="max-h-36 object-contain rounded border border-stone-200 shadow-3xs"
+                            />
+                          ) : (
+                            <div className="text-center p-2 space-y-1">
+                              <FileText size={24} className="text-stone-300 mx-auto" />
+                              <p className="text-stone-500 font-mono text-[10px] font-bold truncate max-w-[160px]">{uploadedFile.name}</p>
+                              <p className="text-[9px] text-stone-400">PDF Dokumentasi</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     ) : (
-                      <div className="text-center space-y-2 p-6">
-                        <FileText size={48} className="text-stone-300 mx-auto" />
-                        <p className="text-stone-600 text-xs font-mono font-bold">{uploadedFile.name}</p>
-                        <p className="text-stone-400 text-[10px]">Dokumen PDF (Pratinjau langsung tidak tersedia untuk format PDF)</p>
+                      <div
+                        onDragEnter={handleDrag}
+                        onDragOver={handleDrag}
+                        onDragLeave={handleDrag}
+                        onDrop={handleDrop}
+                        className={`border-2 border-dashed rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2.5 transition min-h-36 cursor-pointer ${
+                          dragActive 
+                            ? 'border-[#D4AF37] bg-amber-50/5' 
+                            : 'border-stone-200 hover:border-stone-350 bg-stone-50/50'
+                        }`}
+                        onClick={() => document.getElementById('bukti_transfer_upload_file')?.click()}
+                      >
+                        <input
+                          id="bukti_transfer_upload_file"
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="hidden"
+                          onChange={handleFileChange}
+                        />
+                        <div className="w-10 h-10 bg-amber-500/5 text-[#D4AF37] border border-amber-500/10 rounded-xl flex items-center justify-center shadow-3xs">
+                          <UploadCloud size={18} />
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-[11px] font-bold text-stone-750">
+                            Drop bukti pembayaran di sini, atau <span className="text-[#a58421] hover:underline">pilih file</span>
+                          </p>
+                          <p className="text-[9px] text-stone-400">
+                            Format PDF / Gambar Maks. 5 MB
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
-              ) : (
-                // DROPZONE CONTAINER
-                <div
-                  onDragEnter={handleDrag}
-                  onDragOver={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDrop={handleDrop}
-                  className={`border-2 border-dashed rounded-xl p-8 text-center flex flex-col items-center justify-center gap-3 transition min-h-48 cursor-pointer ${
-                    dragActive 
-                      ? 'border-[#D4AF37] bg-stone-50/70' 
-                      : 'border-stone-200 hover:border-stone-450 bg-stone-50/20'
-                  }`}
-                  onClick={() => document.getElementById('bukti_bayar_input')?.click()}
-                >
-                  <input
-                    id="bukti_bayar_input"
-                    type="file"
-                    accept="image/*,application/pdf"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
 
-                  <div className="w-12 h-12 bg-[#D4AF37]/5 text-[#D4AF37] border border-[#D4AF37]/15 rounded-2xl flex items-center justify-center shadow-3xs">
-                    <UploadCloud size={24} className="stroke-[1.75]" />
+                  {/* Progress Indicator */}
+                  {isLoading && saveProgress && (
+                    <div className="p-3 bg-amber-50/50 border border-amber-200 rounded-xl text-stone-800 text-[11px] flex items-center gap-2.5 animate-pulse">
+                      <span className="inline-block w-4 h-4 border-2 border-[#a58421] border-t-transparent rounded-full animate-spin shrink-0"></span>
+                      <span className="font-mono font-medium">{saveProgress}</span>
+                    </div>
+                  )}
+
+                  {/* Errors inside card */}
+                  {errorText && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px] flex items-center gap-2">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>{errorText}</span>
+                    </div>
+                  )}
+
+                  {/* Actions inside card */}
+                  <div className="flex gap-2 justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubmission(null)}
+                      className="px-3.5 py-2 border border-stone-200 hover:bg-stone-50 text-stone-600 rounded-lg text-xs font-bold transition font-mono uppercase text-[10px]"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSubmitReceipt}
+                      disabled={isLoading || !uploadedFile}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition font-mono uppercase text-[10px] ${
+                        isLoading || !uploadedFile
+                          ? 'bg-stone-200 text-stone-400 border border-stone-200 cursor-not-allowed'
+                          : 'bg-[#D4AF37] border border-[#a58421] hover:bg-[#bfa035] text-white shadow-3xs hover:shadow-2xs cursor-pointer'
+                      }`}
+                    >
+                      {isLoading ? 'Menyimpan...' : 'Validasi Lunas ➔'}
+                    </button>
                   </div>
 
-                  <div className="space-y-1">
-                    <p className="text-xs sm:text-sm font-bold text-stone-800">
-                      Drag & Drop bukti pembayaran di sini, atau <span className="text-[#a58421] hover:underline">pilih file</span>
-                    </p>
-                    <p className="text-[10px] text-stone-400">
-                      Mendukung format gambar JPEG, PNG, atau dokumen PDF (Maks. 5 MB)
-                    </p>
+                  {/* Friendly prompt line */}
+                  <div className="flex gap-1.5 p-2.5 bg-blue-50/50 text-blue-800 text-[10px] rounded-lg border border-blue-150 leading-relaxed font-sans">
+                    <Info size={11} className="shrink-0 mt-0.5 text-blue-500" />
+                    <span>Mengunggah bukti pembayaran di sini akan mengubah status voucher secara real-time menjadi <strong>LUNAS</strong> dan menghasilkan pratinjau bukti bayar otomatis di folder lampiran.</span>
                   </div>
+
                 </div>
               )}
-            </div>
 
-            {/* BUTTON ACTION PANELS */}
-            <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-end gap-3 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={onBack}
-                className="px-5 py-2.5 border border-stone-200 hover:bg-stone-50 text-stone-700 rounded-xl text-xs font-bold transition cursor-pointer"
-              >
-                Batal
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSubmitReceipt}
-                disabled={isLoading || !selectedSubmission || !uploadedFile}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition duration-200 ${
-                  isLoading || !selectedSubmission || !uploadedFile
-                    ? 'bg-stone-200 text-stone-400 cursor-not-allowed border border-stone-200 shadow-none' 
-                    : 'bg-[#D4AF37] border border-[#D4AF37] hover:bg-[#c39e2e] text-white cursor-pointer hover:shadow-md'
-                }`}
-              >
-                {isLoading ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                    <span>Menyimpan...</span>
-                  </>
-                ) : (
-                  <>
-                    <CreditCard size={14} />
-                    <span>Unggah Bukti Bayar & Tandai Lunas</span>
-                  </>
-                )}
-              </button>
             </div>
 
           </div>
-        )}
+
+        </div>
 
       </div>
     </div>
