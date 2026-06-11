@@ -891,7 +891,16 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
                       >
                         <div className="space-y-1.5 flex-1 min-w-0 pr-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-stone-900 font-bold text-sm tracking-tight group-hover:text-amber-700 transition">
+                            <span 
+                              className="font-sans text-stone-900 font-extrabold text-sm tracking-tight group-hover:text-amber-700 transition block truncate max-w-full"
+                              title={sub.items && sub.items.length > 0 ? sub.items.map(i => i.item).filter(Boolean).join(', ') : sub.jenisPengajuan}
+                            >
+                              {sub.items && sub.items.length > 0 
+                                ? sub.items.map(i => i.item).filter(Boolean).join(', ') 
+                                : sub.jenisPengajuan || 'Non-Kategori'}
+                            </span>
+                            
+                            <span className="text-[10px] bg-amber-50 text-[#a58421] border border-amber-250 px-1.5 py-0.5 rounded font-mono font-bold whitespace-nowrap">
                               {sub.kode || 'BKK-VOUCHER'}
                             </span>
                             
@@ -899,7 +908,7 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
                               {sub.lokasi || 'N/A'}
                             </span>
 
-                            <span className="text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-mono truncate max-w-[140px]">
+                            <span className="text-[10px] bg-stone-100/80 text-stone-500 px-1.5 py-0.5 rounded font-mono truncate max-w-[140px]">
                               {sub.jenisPengajuan || 'Non-Kategori'}
                             </span>
 
