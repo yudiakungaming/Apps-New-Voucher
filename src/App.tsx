@@ -295,56 +295,7 @@ export default function App() {
     saveSubmissionsToStorage(updated);
   };
 
-  const isIndividualUploaderView = 
-    currentPath === '/input-bukti-transfer' || 
-    currentHash === '#/input-bukti-transfer' || 
-    currentHash === '#input-bukti-transfer';
-
-  if (isIndividualUploaderView) {
-    return (
-      <div id="app-root" className="min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased">
-        <header className="bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs print:hidden">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between min-h-18 py-2 md:py-0">
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo('/')}>
-                <div className="p-2.5 bg-stone-100 rounded-xl text-stone-800">
-                  <Database size={20} className="text-[#D4AF37]" />
-                </div>
-                <div className="space-y-0.5">
-                  <span className="font-mono text-xs uppercase tracking-wider text-stone-400 font-bold block">
-                    Sistem Voucher NMSA
-                  </span>
-                  <h1 className="text-xs sm:text-sm font-black text-stone-900 tracking-tight flex items-center gap-1.5 font-sans">
-                    Nusantara Mineral Payment Portal
-                  </h1>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <InputBuktiTransfer 
-            submissions={submissions} 
-            onUpdateSubmissions={setSubmissions} 
-            onBack={() => navigateTo('/')} 
-          />
-        </main>
-
-        <footer className="bg-white border-t border-stone-200 py-6 print:hidden">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-stone-400">
-            <div>
-              PT. Nusantara Mineral Sukses Abadi &copy; 2026. Semua hak cipta dilindungi.
-            </div>
-            <div className="flex items-center gap-1 text-stone-200">
-              Dibuat dengan <Heart size={10} className="fill-rose-500 text-rose-500 animate-pulse" /> untuk administrasi HO yang modern
-            </div>
-          </div>
-        </footer>
-      </div>
-    );
-  }
-
+  // Check Authentication First: enforce AuthGate for ALL pages when unauthenticated
   if (!authUser) {
     return (
       <AuthGate
@@ -366,6 +317,83 @@ export default function App() {
           }
         }}
       />
+    );
+  }
+
+  const isIndividualUploaderView = 
+    currentPath === '/input-bukti-transfer' || 
+    currentHash === '#/input-bukti-transfer' || 
+    currentHash === '#input-bukti-transfer';
+
+  if (isIndividualUploaderView) {
+    return (
+      <div id="app-root" className="min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased">
+        <header className="bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs print:hidden">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between min-h-18 py-2 md:py-0">
+              <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo('/')}>
+                <div className="p-2.5 bg-stone-100 rounded-xl text-stone-800">
+                  <Database size={20} className="text-[#D4AF37]" />
+                </div>
+                <div className="space-y-0.5">
+                  <span className="font-mono text-xs uppercase tracking-wider text-stone-400 font-bold block">
+                    {userProfile?.companyDetails?.displayName || 'Internal HO System'}
+                  </span>
+                  <h1 className="text-xs sm:text-sm font-black text-stone-900 tracking-tight flex items-center gap-1.5 font-sans">
+                    {userProfile?.companyName ? `${userProfile.companyName} Portal` : 'Nusantara Mineral Payment Portal'}
+                  </h1>
+                </div>
+              </div>
+
+              {/* User Info & Logout Button for Finance View */}
+              <div className="flex flex-col items-end gap-1.5 text-right py-1">
+                <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
+                  <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
+                  <span className="truncate max-w-[200px] sm:max-w-none">
+                    Divisi: <strong className="font-sans font-black text-stone-900">{userProfile ? userProfile?.fullName : authUser?.email}</strong> 
+                    {userProfile ? ` (${userProfile.role})` : ''}
+                  </span>
+                </div>
+                <button
+                  id="btn-logout-header-finance"
+                  onClick={async () => {
+                    try {
+                      await logoutFromFirebase();
+                    } catch (e) {
+                      console.error('Keluar aplikasi gagal:', e);
+                    }
+                  }}
+                  className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md px-2 py-0.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
+                  title="Keluar dari sesi saat ini"
+                >
+                  <span>Keluar Aplikasi (Logout)</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <InputBuktiTransfer 
+            submissions={submissions} 
+            userProfile={userProfile}
+            onUpdateSubmissions={setSubmissions} 
+            onBack={() => navigateTo('/')} 
+          />
+        </main>
+
+        <footer className="bg-white border-t border-stone-200 py-6 print:hidden">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-stone-400">
+            <div>
+              {userProfile?.companyName || 'PT. Nusantara Mineral Sukses Abadi'} &copy; 2026. Semua hak cipta dilindungi.
+            </div>
+            <div className="flex items-center gap-1 text-stone-200">
+              Dibuat dengan <Heart size={10} className="fill-rose-500 text-rose-500 animate-pulse" /> untuk administrasi HO yang modern
+            </div>
+          </div>
+        </footer>
+      </div>
     );
   }
 
