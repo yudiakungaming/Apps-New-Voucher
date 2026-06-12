@@ -664,8 +664,50 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                         </td>
                         
                         {/* Column K: Nama File */}
-                        <td className="border-r border-stone-200/80 px-2 py-1.5 text-stone-500 truncate max-w-xs" title={sub.googleDriveFileName || 'Tidak ada file lampiran'}>
-                          {sub.googleDriveFileName || '-'}
+                        <td className="border-r border-stone-200/80 px-2 py-1 flex items-center h-full max-w-xs overflow-x-auto scrollbar-none" title={sub.googleDriveFileName || 'Tidak ada file lampiran'}>
+                          {sub.googleDriveFiles && sub.googleDriveFiles.some(f => f.docType) ? (
+                            <div className="flex flex-wrap gap-1 items-center py-0.5">
+                              {sub.googleDriveFiles.filter(f => f.docType).map((f) => {
+                                const docAbbrev = f.docType === 'po' ? 'PO'
+                                                : f.docType === 'lhv' ? 'LHV'
+                                                : f.docType === 'draft_survei' ? 'Survei'
+                                                : f.docType === 'bill_of_lading' ? 'B/L'
+                                                : f.docType === 'cargo_manifest' ? 'Cargo'
+                                                : f.docType === 'cow_coa_ds_bongkar' ? 'COW/COA'
+                                                : f.docType === 'bukti_pembayaran_batubara' ? 'P.Bara'
+                                                : f.docType === 'bukti_shipment_tongkang_founder' ? 'S.Tongkang'
+                                                : f.docType === 'bukti_pajak_trader_founder' ? 'Pajak'
+                                                : f.docType === 'merged_all' ? 'Gabungan'
+                                                : f.docType?.toUpperCase();
+                                return (
+                                  <a
+                                    key={f.docType}
+                                    href={f.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`border text-[8.5px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-tighter shrink-0 transition ${
+                                      f.docType === 'merged_all'
+                                        ? 'bg-amber-50 hover:bg-amber-100 text-[#917118] border-amber-250'
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-250'
+                                    }`}
+                                    title={`Buka ${f.name}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {docAbbrev}
+                                  </a>
+                                );
+                              })}
+                              {sub.googleDriveFiles.some(f => !f.docType && !f.isF1 && !f.isF2 && !f.isBuktiPembayaran) && (
+                                <span className="bg-stone-50 text-stone-600 border border-stone-250 text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase shrink-0">
+                                  +{sub.googleDriveFiles.filter(f => !f.docType && !f.isF1 && !f.isF2 && !f.isBuktiPembayaran).length}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="truncate block py-0.5" title={sub.googleDriveFileName || ''}>
+                              {sub.googleDriveFileName || '-'}
+                            </span>
+                          )}
                         </td>
                         
                         {/* Action buttons inside rows */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Submission, SubmissionItem, PaymentMethod } from '../types';
+import { Submission, SubmissionItem, PaymentMethod, REQUIRED_TRANSACTION_DOCS } from '../types';
 import { googleDriveLogin, getStoredGoogleDriveToken, setGoogleDriveToken } from '../firebase';
 import { Trash2, Plus, ArrowLeft, Save, AlertCircle, Sparkles, Cloud, Loader2 } from 'lucide-react';
 import { generateF1PdfBytes, generateF2PdfBytes, formatDateIndonesian, convertImageToPdf } from '../utils';
@@ -242,7 +242,8 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   const [uploadError, setUploadError] = useState('');
 
   // Modern unified local/drive files list state
-  const [fileItems, setFileItems] = useState<{ id: string; name: string; file?: File; url?: string; isDrive: boolean }[]>([]);
+  const [fileItems, setFileItems] = useState<{ id: string; name: string; file?: File; url?: string; isDrive: boolean; docType?: string }[]>([]);
+  const [isMergedMethod, setIsMergedMethod] = useState(false);
   
   // Dedicated Bukti Pembayaran states
   const [buktiPembayaranFile, setBuktiPembayaranFile] = useState<File | null>(null);
@@ -310,6 +311,31 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
     e.target.value = '';
   };
 
+  const handleSpecificFileUpload = (e: React.ChangeEvent<HTMLInputElement>, docType: string) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadError('');
+    const extDoc = REQUIRED_TRANSACTION_DOCS.find(d => d.key === docType);
+    const label = extDoc ? extDoc.label : 'Dokumen';
+
+    const newItems = (Array.from(files) as File[]).map((file, idx) => ({
+      id: `local-${docType}-${Date.now()}-${idx}`,
+      name: `${label} - ${file.name}`,
+      file: file,
+      isDrive: false,
+      docType: docType
+    }));
+
+    // Filter out any existing file with this docType to replace it easily
+    setFileItems(prev => {
+      const filtered = prev.filter(item => item.docType !== docType);
+      return [...filtered, ...newItems];
+    });
+
+    e.target.value = '';
+  };
+
   const handleDeleteFileItem = (id: string) => {
     setFileItems(prev => prev.filter(item => item.id !== id));
   };
@@ -335,8 +361,10 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           id: `drive-${i}`,
           name: f.name,
           url: f.url,
-          isDrive: true
+          isDrive: true,
+          docType: f.docType
         })));
+        setIsMergedMethod(initialSubmission.googleDriveFiles.some(f => f.docType === 'merged_all'));
       } else if (initialSubmission.googleDriveFileUrl) {
         const defaultDrive = [{ url: initialSubmission.googleDriveFileUrl, name: initialSubmission.googleDriveFileName || 'Buka di Drive' }];
         setGoogleDriveFiles(defaultDrive);
@@ -485,7 +513,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
     setSaveProgress('Menyiapkan parameter unggahan...');
 
     try {
-      let finalFiles: { url: string; name: string; isF1?: boolean; isF2?: boolean; isBuktiPembayaran?: boolean }[] = [];
+      let finalFiles: { url: string; name: string; isF1?: boolean; isF2?: boolean; isBuktiPembayaran?: boolean; docType?: string }[] = [];
       let finalBuktiPembayaran: { url: string; name: string } | undefined = undefined;
 
       const token = getStoredGoogleDriveToken();
@@ -741,13 +769,26 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           }
 
           const ext = mimeType === 'application/pdf' ? '.pdf' : (getFileExtensionForSave(originalName) || '.bin');
-          const baseName = `Bukti Transaksi - (${cleanJenis} - ${cleanPenerima})`;
+          
+          let baseName = `Bukti Transaksi - (${cleanJenis} - ${cleanPenerima})`;
+          if (item.docType) {
+            if (item.docType === 'merged_all') {
+              baseName = `Lengkap - Gabungan 9 Dokumen Utama - (${cleanJenis} - ${cleanPenerima})`;
+            } else {
+              const foundDoc = REQUIRED_TRANSACTION_DOCS.find(d => d.key === item.docType);
+              if (foundDoc) {
+                baseName = `${foundDoc.label} - (${cleanJenis} - ${cleanPenerima})`;
+              }
+            }
+          }
+          
           const finalFileName = i === 0 ? `${baseName}${ext}` : `${baseName} (${i + 1})${ext}`;
 
           const resData = await uploadFileToFolder(finalFileName, mimeType, fileBytes, targetFolderId);
           finalFiles.push({
             url: resData.url,
             name: resData.name,
+            docType: item.docType
           });
         }
 
@@ -1073,81 +1114,289 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Left Selector */}
-              <div className="border border-dashed border-stone-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white min-h-[140px]">
-                <label className="cursor-pointer w-full h-full flex flex-col items-center justify-center py-4 space-y-1.5 hover:bg-stone-50/50 rounded-lg transition duration-200">
-                  <Cloud size={24} className="text-stone-400" />
-                  <span className="text-xs font-bold text-stone-700">Pilih File Nota Bukti</span>
-                  <span className="text-[10px] text-stone-400">PDF, JPG, PNG (Bisa pilih banyak sekaligus)</span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*,application/pdf"
-                    multiple
-                    onChange={handleFileUpload}
-                  />
-                </label>
+            <div className="space-y-6">
+              {/* Segmented control to choose between separate vs merged upload */}
+              <div className="bg-stone-50 p-3 rounded-xl border border-stone-200/85 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs">
+                <div className="space-y-0.5">
+                  <span className="block text-xs font-bold text-stone-800">Format Dokumen Transaksi Utama:</span>
+                  <p className="text-[10px] text-stone-500">Apakah dokumen Anda terpisah atau sudah digabung menjadi 1 file utuh?</p>
+                </div>
+                <div className="flex gap-1 bg-stone-200/60 p-1 rounded-lg self-start sm:self-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsMergedMethod(false)}
+                    className={`py-1.5 px-3 rounded-md text-[11px] font-bold transition flex items-center gap-1 ${
+                      !isMergedMethod
+                        ? 'bg-white text-stone-900 shadow-xs'
+                        : 'text-stone-500 hover:text-stone-850'
+                    }`}
+                  >
+                    📂 9 Dokumen Terpisah
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsMergedMethod(true)}
+                    className={`py-1.5 px-3 rounded-md text-[11px] font-bold transition flex items-center gap-1 ${
+                      isMergedMethod
+                        ? 'bg-[#917118] text-white shadow-xs'
+                        : 'text-stone-500 hover:text-stone-850'
+                    }`}
+                  >
+                    📄 1 Berkas Gabungan (Utuh)
+                  </button>
+                </div>
               </div>
 
-              {/* Right status list of fileItems */}
-              <div className="flex flex-col p-4 bg-white border border-stone-200 rounded-xl max-h-[250px] overflow-y-auto">
-                <span className="block text-[10px] font-mono font-bold text-stone-400 uppercase tracking-wider mb-2">
-                  Daftar Berkas Lampiran ({fileItems.length})
-                </span>
-                {fileItems.length > 0 ? (
-                  <div className="space-y-2">
-                    {fileItems.map((item, idx) => (
-                      <div key={item.id} className="p-2 border border-stone-200 rounded-lg bg-stone-50/50 flex items-center justify-between gap-2 text-xs">
-                        <div className="min-w-0 flex-1">
-                          <span className="block font-semibold text-stone-800 truncate" title={item.name}>
-                            {idx + 1}. {item.name}
-                          </span>
-                          {item.isDrive ? (
-                            <span className="inline-flex items-center gap-1 text-[8.5px] text-amber-600 font-semibold uppercase tracking-wider mt-0.5">
-                              ● Terunggah di Google Drive
-                            </span>
+              {isMergedMethod ? (
+                /* Beautiful block for 1 Merged PDF File */
+                <div className="space-y-3">
+                  <span className="block text-[11px] font-mono font-bold text-[#917118] uppercase tracking-wider">
+                    Berkas Gabungan Dokumen Utama (PO, LHV, B/L, Cargo dll. dalam 1 PDF)
+                  </span>
+                  {(() => {
+                    const matched = fileItems.find((itm) => itm.docType === 'merged_all');
+                    return (
+                      <div
+                        className={`p-5 border rounded-2xl transition duration-150 flex flex-col justify-between min-h-[145px] ${
+                          matched
+                            ? 'border-emerald-250 bg-emerald-50/20'
+                            : 'border-stone-250 hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 bg-white'
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-start gap-1">
+                            <div>
+                              <span className="text-xs font-bold text-stone-800">
+                                Berkas Gabungan Utama (Kompleks)
+                              </span>
+                              <p className="text-[10px] text-stone-500 mt-0.5">
+                                Unggah terus 1 berkas PDF utuh hasil penggabungan (Lengkapi PO, LHV, Draft Survei, B/L, Cargo Manifest, DLL).
+                              </p>
+                            </div>
+                            {matched && (
+                              <span className="shrink-0 bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider font-mono">
+                                Ada
+                              </span>
+                            )}
+                          </div>
+                          
+                          {matched ? (
+                            <div className="space-y-1 mt-2.5 bg-white/60 p-2.5 rounded-lg border border-stone-200">
+                              <p className="text-[10px] text-stone-600 truncate font-mono uppercase" title={matched.name}>
+                                {matched.name.includes(' - ') ? matched.name.substring(matched.name.indexOf(' - ') + 3) : matched.name}
+                              </p>
+                              {matched.isDrive ? (
+                                <span className="inline-block text-[8px] text-amber-600 font-extrabold uppercase tracking-wide">
+                                  ● Drive Cloud
+                                </span>
+                              ) : (
+                                <span className="inline-block text-[8px] text-blue-600 font-extrabold uppercase tracking-wide">
+                                  ● Lokal (Belum Simpan)
+                                </span>
+                              )}
+                            </div>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[8.5px] text-blue-600 font-semibold uppercase tracking-wider mt-0.5">
-                              ● Lokal (Menunggu Simpan)
-                            </span>
+                            <p className="text-[10px] text-stone-400 italic mt-1 bg-stone-50 p-2 rounded-lg border border-stone-150 border-dashed">
+                              Belum ada berkas gabungan yang dimasukkan. Silakan pilih berkas PDF gabungan Anda di bawah.
+                            </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {item.isDrive && item.url && (
-                            <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#917118] border border-[#D4AF37]/30 py-1 px-2 rounded-md text-[10px] font-bold transition"
-                            >
-                              Buka
-                            </a>
+
+                        <div className="mt-3 pt-2.5 border-t border-stone-150/50 flex items-center justify-between">
+                          {matched ? (
+                            <div className="flex gap-1.5 items-center w-full">
+                              {matched.isDrive && matched.url && (
+                                <a
+                                  href={matched.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[9px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-250 py-1 px-2.5 rounded-md font-bold transition flex items-center gap-0.5"
+                                >
+                                  Buka File
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFileItem(matched.id)}
+                                className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 py-1 px-2.5 rounded-md font-bold transition flex items-center gap-0.5 ml-auto"
+                              >
+                                <Trash2 size={10} />
+                                Hapus File
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="cursor-pointer text-[10px] text-[#917118] hover:text-stone-850 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/35 py-1.5 px-3 rounded-lg transition font-semibold block text-center w-full">
+                              Pilih Berkas Gabungan (PDF)
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept="application/pdf"
+                                onChange={(e) => handleSpecificFileUpload(e, 'merged_all')}
+                              />
+                            </label>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteFileItem(item.id)}
-                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 p-1 rounded-md transition"
-                            title="Hapus dari Lampiran"
-                          >
-                            <Trash2 size={12} />
-                          </button>
                         </div>
                       </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setFileItems([])}
-                      className="text-[10px] font-mono font-bold text-rose-500 hover:text-rose-600 hover:underline block pt-1 text-left"
-                    >
-                      Hapus Semua Lampiran
-                    </button>
+                    );
+                  })()}
+                </div>
+              ) : (
+                /* Grid 9 required documents for coal transactions */
+                <div className="space-y-3">
+                  <span className="block text-[11px] font-mono font-bold text-stone-500 uppercase tracking-wider">
+                    9 Dokumen Bukti Transaksi Wajib / Utama (Batubara)
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {REQUIRED_TRANSACTION_DOCS.map((doc) => {
+                      const matched = fileItems.find((itm) => itm.docType === doc.key);
+                      return (
+                        <div
+                          key={doc.key}
+                          className={`p-3 border rounded-xl transition duration-150 flex flex-col justify-between min-h-[120px] ${
+                            matched
+                              ? 'border-emerald-250 bg-emerald-50/20'
+                              : 'border-stone-200 hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 bg-white'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-start gap-1">
+                              <span className="text-xs font-bold text-stone-800 line-clamp-2" title={doc.fullName}>
+                                {doc.fullName}
+                              </span>
+                              {matched && (
+                                <span className="shrink-0 bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider font-mono">
+                                  Ada
+                                </span>
+                              )}
+                            </div>
+                            
+                            {matched ? (
+                              <div className="space-y-1 mt-1">
+                                <p className="text-[10px] text-stone-600 truncate font-mono uppercase" title={matched.name}>
+                                  {matched.name.includes(' - ') ? matched.name.substring(matched.name.indexOf(' - ') + 3) : matched.name}
+                                </p>
+                                {matched.isDrive ? (
+                                  <span className="inline-block text-[8px] text-amber-600 font-extrabold uppercase tracking-wide">
+                                    ● Drive Cloud
+                                  </span>
+                                ) : (
+                                  <span className="inline-block text-[8px] text-blue-600 font-extrabold uppercase tracking-wide">
+                                    ● Lokal (Belum Simpan)
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-stone-400 italic">Berkas belum dilampirkan</p>
+                            )}
+                          </div>
+
+                          <div className="mt-2.5 pt-2 border-t border-stone-150/50 flex items-center justify-between">
+                            {matched ? (
+                              <div className="flex gap-1.5 items-center w-full">
+                                {matched.isDrive && matched.url && (
+                                  <a
+                                    href={matched.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[9px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-250 py-0.5 px-2 rounded-md font-bold transition flex items-center gap-0.5"
+                                  >
+                                    Buka
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteFileItem(matched.id)}
+                                  className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 py-0.5 px-2 rounded-md font-bold transition flex items-center gap-0.5 ml-auto"
+                                >
+                                  <Trash2 size={10} />
+                                  Hapus
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="cursor-pointer text-[10px] text-[#917118] hover:text-stone-850 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/35 py-1 px-2.5 rounded-lg transition font-semibold block text-center w-full">
+                                Pilih Berkas / Upload File
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="image/*,application/pdf"
+                                  onChange={(e) => handleSpecificFileUpload(e, doc.key)}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <div className="my-auto py-4 text-center">
-                    <span className="text-xs italic text-stone-400">Belum ada file lampiran dipilih.</span>
+                </div>
+              )}
+
+              {/* General Attachments */}
+              <div className="pt-4 border-t border-stone-200/80 space-y-3">
+                <span className="block text-[11px] font-mono font-bold text-stone-500 uppercase tracking-wider">
+                  Lampiran Pendukung Lainnya (General Attachments)
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* General file selector */}
+                  <div className="border border-dashed border-stone-300 rounded-xl p-4 flex flex-col items-center justify-center text-center bg-white min-h-[110px]">
+                    <label className="cursor-pointer w-full h-full flex flex-col items-center justify-center py-2 space-y-1 hover:bg-stone-50/50 rounded-lg transition duration-250">
+                      <Cloud size={20} className="text-stone-400" />
+                      <span className="text-xs font-bold text-stone-700">Pilih Berkas Lampiran Lain</span>
+                      <span className="text-[9px] text-stone-400">PDF, JPG, PNG dll.</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*,application/pdf"
+                        multiple
+                        onChange={handleFileUpload}
+                      />
+                    </label>
                   </div>
-                )}
+
+                  {/* List of general attachments */}
+                  <div className="flex flex-col p-4 bg-white border border-stone-200 rounded-xl max-h-[180px] overflow-y-auto">
+                    <span className="block text-[9px] font-mono font-bold text-stone-400 uppercase tracking-wider mb-1.5">
+                      Daftar Lampiran Lain ({fileItems.filter(f => !f.docType).length})
+                    </span>
+                    {fileItems.filter(f => !f.docType).length > 0 ? (
+                      <div className="space-y-1.5">
+                        {fileItems
+                          .filter((f) => !f.docType)
+                          .map((item, idx) => (
+                            <div
+                              key={item.id}
+                              className="p-1.5 border border-stone-200 rounded-lg bg-stone-50/50 flex items-center justify-between gap-1.5 text-[11px]"
+                            >
+                              <span className="truncate font-medium text-stone-700 flex-1" title={item.name}>
+                                {idx + 1}. {item.name}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {item.isDrive && item.url && (
+                                  <a
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#917118] border border-[#D4AF37]/30 py-0.5 px-1.5 rounded text-[9px] font-bold"
+                                  >
+                                    Buka
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteFileItem(item.id)}
+                                  className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-250 p-1 rounded-md"
+                                >
+                                  <Trash2 size={10} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs italic text-stone-400 my-auto text-center">Tidak ada lampiran lain.</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

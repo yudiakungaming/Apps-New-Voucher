@@ -656,6 +656,19 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
         {/* ================= PAGE 3+: LAMPIRAN DOKUMEN BUKTI (DYNAMIC SEVERAL PAGES) ================= */}
         {(activeTab === 'both' || activeTab === 'lampiran') && !isLoadingPages && renderedPages.map((page, idx) => {
           const pageNum = 3 + idx;
+          const fileObj = attachmentFiles[page.fileIndex];
+          const fileLabel = fileObj?.isBuktiPembayaran ? 'Bukti Bayar'
+                          : fileObj?.docType === 'po' ? 'PO'
+                          : fileObj?.docType === 'lhv' ? 'LHV'
+                          : fileObj?.docType === 'draft_survei' ? 'Survei'
+                          : fileObj?.docType === 'bill_of_lading' ? 'Bill of Lading'
+                          : fileObj?.docType === 'cargo_manifest' ? 'Cargo'
+                          : fileObj?.docType === 'cow_coa_ds_bongkar' ? 'COW & COA DS Bongkar'
+                          : fileObj?.docType === 'bukti_pembayaran_batubara' ? 'P.Batubara'
+                          : fileObj?.docType === 'bukti_shipment_tongkang_founder' ? 'S.Tongkang'
+                          : fileObj?.docType === 'bukti_pajak_trader_founder' ? 'Pajak Trader'
+                          : fileObj?.docType === 'merged_all' ? 'Gabungan Dokumen Utama'
+                          : `Lampiran B${page.fileIndex + 1}`;
 
           return (
             <React.Fragment key={page.id}>
@@ -663,7 +676,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
               {activeTab === 'both' && (
                 <div className="w-[210mm] border-t-2 border-dashed border-stone-300 py-3 print:hidden flex justify-center">
                   <span className="text-xs bg-stone-100 text-[#917118] px-3 py-1 rounded-full font-semibold uppercase font-mono">
-                    {attachmentFiles[page.fileIndex]?.isBuktiPembayaran ? 'BATAS HALAMAN BUKTI BAYAR (PAGE BREAK)' : `BATAS HALAMAN LAMPIRAN B${page.fileIndex + 1} (PAGE BREAK)`}
+                    BATAS HALAMAN {fileLabel.toUpperCase()} (PAGE BREAK)
                   </span>
                 </div>
               )}
@@ -680,11 +693,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                 <div className="absolute top-4 right-4 bg-stone-900/85 text-white font-mono text-[9px] px-2.5 py-1 rounded-md shadow-md flex items-center gap-1.5 select-none print:hidden z-10">
                   <FileText size={10} className="text-amber-400" />
                   <span>
-                    Halaman {pageNum} / {totalPagesCount} (
-                    {attachmentFiles[page.fileIndex]?.isBuktiPembayaran 
-                      ? 'Bukti Bayar' 
-                      : `B${page.fileIndex + 1}`
-                    } - Hal {page.pageNumber})
+                    Halaman {pageNum} / {totalPagesCount} ({fileLabel} - Hal {page.pageNumber})
                   </span>
                 </div>
               </div>

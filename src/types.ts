@@ -23,7 +23,7 @@ export interface Submission {
   // Google Drive attachment support
   googleDriveFileUrl?: string;
   googleDriveFileName?: string;
-  googleDriveFiles?: { url: string; name: string; pageCount?: number; isF1?: boolean; isF2?: boolean; isBuktiPembayaran?: boolean }[];
+  googleDriveFiles?: { url: string; name: string; pageCount?: number; isF1?: boolean; isF2?: boolean; isBuktiPembayaran?: boolean; docType?: string }[];
   buktiPembayaran?: { url: string; name: string };
   
   // Signatures for Formulir Pengajuan
@@ -41,3 +41,15 @@ export interface Submission {
   items: SubmissionItem[];
   createdAt: string;
 }
+
+export const REQUIRED_TRANSACTION_DOCS = [
+  { key: 'po', label: 'PO', fullName: 'PO (Purchase Order)' },
+  { key: 'lhv', label: 'LHV', fullName: 'LHV (Laporan Hasil Verifikasi)' },
+  { key: 'draft_survei', label: 'Draft Survei', fullName: 'Draft Survei (Survey Draft)' },
+  { key: 'bill_of_lading', label: 'Bill of Lading', fullName: 'Bill of Lading (B/L)' },
+  { key: 'cargo_manifest', label: 'Cargo Manifest', fullName: 'Cargo Manifest' },
+  { key: 'cow_coa_ds_bongkar', label: 'COW & COA DS Bongkar', fullName: 'COW & COA DS Bongkar (Draft Survey)' },
+  { key: 'bukti_pembayaran_batubara', label: 'Bukti Pembayaran Batubara', fullName: 'Bukti Pembayaran Batubara' },
+  { key: 'bukti_shipment_tongkang_founder', label: 'Bukti Shipment Tongkang', fullName: 'Bukti Pembayaran Shipment Tongkang dari Founder' },
+  { key: 'bukti_pajak_trader_founder', label: 'Bukti Bayar Pajak Trader', fullName: 'Bukti Bayar Pajak Trader ke Founder' }
+];
