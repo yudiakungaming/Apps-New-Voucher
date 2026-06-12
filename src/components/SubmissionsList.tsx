@@ -596,7 +596,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                         
                         {/* Column A: No */}
                         <td className="border-r border-stone-200/80 px-2 py-1.5 font-mono text-center">
-                          {(idx + 1) + 20}
+                          {idx + 1}
                         </td>
                         
                         {/* Column B: Company */}
