@@ -872,7 +872,13 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       onSave(payload);
     } catch (err: any) {
       console.error(err);
-      setValidationError(err.message || 'Sesuatu yang salah terjadi saat memproses dokumen.');
+      if (err.message === 'UNAUTHORIZED_DRIVE_TOKEN' || (err.message && err.message.includes('UNAUTHORIZED_DRIVE_TOKEN'))) {
+        setIsDriveConnected(false);
+        setGoogleDriveToken(null);
+        setValidationError('Gagal menyinkronkan berkas ke Google Drive: Sesi Google Drive Anda telah kedaluwarsa atau tidak sah. Silakan hubungkan ulang Google Drive Anda melalui tombol "Hubungkan Google Drive Aman" di bagian bawah formulir ini, lalu klik Simpan kembali.');
+      } else {
+        setValidationError(err.message || 'Sesuatu yang salah terjadi saat memproses dokumen.');
+      }
     } finally {
       setIsSaving(false);
     }
