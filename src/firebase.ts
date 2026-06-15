@@ -691,10 +691,24 @@ export const getStoredGoogleDriveToken = (): string | null => {
 };
 
 export const googleDriveLogin = async (): Promise<{ user: User; accessToken: string; driveDetails?: any }> => {
-  if (!firebaseAuth) {
+  const config = getStoredFirebaseConfig();
+  if (!config) {
     throw new Error('Database autentikasi belum beroperasi.');
   }
 
+  // To prevent changing the currently logged-in portal user (which swaps user profiles,
+  // causing data loss or falling back to default lists), we initialize a completely separate,
+  // isolated secondary Firebase Auth instance solely for handling the Google Drive popup credentials!
+  let secondaryApp;
+  const secondaryAppName = 'drive-auth-temp-' + Math.random().toString(36).substring(2);
+  try {
+    secondaryApp = initializeApp(config, secondaryAppName);
+  } catch (err) {
+    console.error('Failed to init secondary app:', err);
+    throw new Error('Gagal menyiapkan otentikasi Google Drive terisolasi.');
+  }
+
+  const secondaryAuth = getAuth(secondaryApp);
   const provider = new GoogleAuthProvider();
   // Request Google Drive File write/edit permissions
   provider.addScope('https://www.googleapis.com/auth/drive.file');
@@ -704,7 +718,7 @@ export const googleDriveLogin = async (): Promise<{ user: User; accessToken: str
   });
   
   try {
-    const result = await signInWithPopup(firebaseAuth, provider);
+    const result = await signInWithPopup(secondaryAuth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('Sesi otentikasi Google gagal menyuplai kunci akses (Access Token).');
@@ -747,6 +761,14 @@ export const googleDriveLogin = async (): Promise<{ user: User; accessToken: str
     }
 
     saveConnectedDrives(currentDrives);
+
+    // Completely dispose of secondary auth session to keep memory clean
+    try {
+      await secondaryAuth.signOut();
+    } catch (signoutErr) {
+      console.warn('Silent signout error for secondary instance:', signoutErr);
+    }
+
     return { user: result.user, accessToken: credential.accessToken, driveDetails };
   } catch (error: any) {
     console.error('Error Google Drive connection:', error);
