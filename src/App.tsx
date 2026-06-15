@@ -23,7 +23,15 @@ import {
 import { Database, FileText, CheckSquare, ShieldCheck, Heart, Cloud } from 'lucide-react';
 
 export default function App() {
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>(() => {
+    try {
+      const stored = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      console.error('Error loading cached submissions on init:', e);
+      return [];
+    }
+  });
   const [view, setView] = useState<'list' | 'form' | 'print'>('list');
   const [activeSubmission, setActiveSubmission] = useState<Submission | null>(null);
   const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
@@ -75,11 +83,13 @@ export default function App() {
     const unsubscribe = registerAuthChangeListener(async (user) => {
       setAuthUser(user);
       if (!user) {
-        // User logged out / not logged in: purge all cache and clear memory state immediately
-        setSubmissions([]);
-        setUserProfile(null);
-        localStorage.removeItem('NUSANTARA_HO_SUBMISSIONS');
-        sessionStorage.removeItem('NUSANTARA_SESSION_ACTIVE');
+        // Only clear data cache on explicit, manual log out
+        const hasSessionActive = sessionStorage.getItem('NUSANTARA_SESSION_ACTIVE') === 'true';
+        if (!hasSessionActive) {
+          setSubmissions([]);
+          setUserProfile(null);
+          localStorage.removeItem('NUSANTARA_HO_SUBMISSIONS');
+        }
       } else {
         // Mark session as active to prevent force-logout during same-tab refreshes
         sessionStorage.setItem('NUSANTARA_SESSION_ACTIVE', 'true');
@@ -359,6 +369,7 @@ export default function App() {
                     id="btn-logout-header-finance"
                     onClick={async () => {
                       try {
+                        sessionStorage.removeItem('NUSANTARA_SESSION_ACTIVE');
                         await logoutFromFirebase();
                       } catch (e) {
                         console.error('Keluar aplikasi gagal:', e);
@@ -434,6 +445,7 @@ export default function App() {
                 id="btn-logout-header"
                 onClick={async () => {
                   try {
+                    sessionStorage.removeItem('NUSANTARA_SESSION_ACTIVE');
                     await logoutFromFirebase();
                   } catch (e) {
                     console.error('Keluar aplikasi gagal:', e);

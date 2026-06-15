@@ -458,7 +458,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             </div>
 
             {/* 4 Cells Signatures Table Grid */}
-            <table className="w-full border-collapse border border-black bg-white mt-20 text-center text-xs table-fixed">
+            <table className="w-full border-collapse border border-black bg-white mt-12 text-center text-xs table-fixed">
               <thead>
                 <tr className="bg-stone-50 border-b border-black text-[10px] font-bold uppercase text-stone-700">
                   <th className="border-r border-black py-1.5 w-1/4">Diverifikasi</th>
@@ -488,6 +488,16 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                 </tr>
               </tbody>
             </table>
+
+            {/* Elegant bottom-right supervisor initials box */}
+            <div className="flex justify-end mt-4">
+              <div className="border border-black p-1.5 w-[140px] text-center bg-white flex flex-col" style={{ height: '65px' }}>
+                <span className="text-[9px] font-bold text-black uppercase tracking-wider border-b border-black pb-0.5">Paraf Pemeriksaan</span>
+                <div className="flex-1 flex items-center justify-center">
+                  <span className="text-[8px] text-stone-300 italic uppercase tracking-widest font-mono">Supervisor</span>
+                </div>
+              </div>
+            </div>
 
           </div>
         )}

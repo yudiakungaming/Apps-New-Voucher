@@ -545,8 +545,20 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           dayStr = String(dateObj.getDate());
         }
 
-        const { company } = parseCompanyAndSequence(kode);
-        const folderCompanyUpper = company.toUpperCase();
+        let companyCode = 'nmsa';
+        if (userProfile && userProfile.companyId) {
+          companyCode = userProfile.companyId;
+        } else {
+          const parsed = parseCompanyAndSequence(kode);
+          companyCode = parsed.company;
+        }
+
+        // Prevent treating purely numeric strings as company names (e.g., from codes like T-0326060213)
+        if (!companyCode || /^\d+$/.test(companyCode)) {
+          companyCode = 'nmsa';
+        }
+
+        const folderCompanyUpper = companyCode.toUpperCase();
         
         console.log('[Drive Upload] Memulai pembuatan struktur direktori:', { company: folderCompanyUpper, yearStr, monthStr, dayStr });
         
