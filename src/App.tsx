@@ -143,7 +143,35 @@ export default function App() {
         try {
           const cloudData = await loadSubmissionsFromFirestore(profile?.companyId);
           if (cloudData && cloudData.length > 0) {
-            saveSubmissionsToStorage(cloudData);
+            // MERGE behavior instead of blind overwrite!
+            // This prevents locally added/edited entries (such as the 101st item) from being wiped out
+            // by a slightly stale/delayed cloud set or temporary syncing delay.
+            const storedLocal = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
+            let localList: Submission[] = [];
+            try {
+              localList = storedLocal ? JSON.parse(storedLocal) : [];
+            } catch (jsonErr) {
+              console.error('Error parsing stored local submissions:', jsonErr);
+            }
+
+            const mergedMap = new Map<string, Submission>();
+            // Load current state / local list first holding edits/creations
+            localList.forEach(sub => {
+              if (sub && sub.id) {
+                mergedMap.set(sub.id, sub);
+              }
+            });
+            // Overwrite with incoming cloud items
+            cloudData.forEach(sub => {
+              if (sub && sub.id) {
+                mergedMap.set(sub.id, sub);
+              }
+            });
+
+            const mergedList = Array.from(mergedMap.values());
+            mergedList.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
+
+            saveSubmissionsToStorage(mergedList);
           } else {
             const stored = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
             if (stored) {
