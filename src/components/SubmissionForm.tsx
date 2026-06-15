@@ -8,7 +8,7 @@ interface SubmissionFormProps {
   initialSubmission?: Submission | null;
   userProfile?: any;
   submissions?: Submission[];
-  onSave: (submission: Submission) => void;
+  onSave: (submission: Submission) => Promise<void> | void;
   onCancel: () => void;
 }
 
@@ -881,7 +881,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       };
 
       setSaveProgress('Menyimpan data transaksi ke database Firestore...');
-      onSave(payload);
+      await onSave(payload);
     } catch (err: any) {
       console.error(err);
       if (err.message === 'UNAUTHORIZED_DRIVE_TOKEN' || (err.message && err.message.includes('UNAUTHORIZED_DRIVE_TOKEN'))) {

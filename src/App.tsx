@@ -83,13 +83,9 @@ export default function App() {
     const unsubscribe = registerAuthChangeListener(async (user) => {
       setAuthUser(user);
       if (!user) {
-        // Only clear data cache on explicit, manual log out
-        const hasSessionActive = sessionStorage.getItem('NUSANTARA_SESSION_ACTIVE') === 'true';
-        if (!hasSessionActive) {
-          setSubmissions([]);
-          setUserProfile(null);
-          localStorage.removeItem('NUSANTARA_HO_SUBMISSIONS');
-        }
+        setUserProfile(null);
+        // DO NOT implicitly delete localStorage or empty submissions here.
+        // This avoids race conditions and data-loss during initial app loading stages or tab reopenings!
       } else {
         // Mark session as active to prevent force-logout during same-tab refreshes
         sessionStorage.setItem('NUSANTARA_SESSION_ACTIVE', 'true');
@@ -279,13 +275,36 @@ export default function App() {
     if (isFirebaseConfigured()) {
       try {
         await saveSubmissionToFirestore(savedSub, userProfile?.companyId, userProfile?.companyName);
-      } catch (err) {
-        console.warn('Silent fallback: cloud save rejected', err);
+      } catch (err: any) {
+        console.error('Core cloud write failed:', err);
+        // We throw a detailed error so that the form UI handles it and remains open,
+        // preventing the silent cloud save failures from tricking the user.
+        throw new Error(
+          `Pengajuan berhasil disimpan secara LOKAL di browser Anda, tetapi GAGAL disinkronkan ke Cloud Firestore.\n` +
+          `Detail Error: ${err instanceof Error ? err.message : String(err)}\n\n` +
+          `Saran Tindakan:\n` +
+          `1. Pastikan Rule Keamanan (Security Rules) di Firebase Console Anda memperbolehkan akses tulis (write) untuk koleksi 'submissions'.\n` +
+          `2. Periksa apakah masa aktif aturan test-mode 30 hari Anda telah kedaluwarsa.`
+        );
       }
     }
 
     setEditingSubmission(null);
     setView('list');
+  };
+
+  // Central Logout Handler
+  const handleLogout = async () => {
+    try {
+      sessionStorage.removeItem('NUSANTARA_SESSION_ACTIVE');
+      localStorage.removeItem('NUSANTARA_HO_SUBMISSIONS');
+      setSubmissions([]);
+      setUserProfile(null);
+      setAuthUser(null);
+      await logoutFromFirebase();
+    } catch (e) {
+      console.error('Keluar aplikasi gagal:', e);
+    }
   };
 
   // Import handler for JSON backup
@@ -395,14 +414,7 @@ export default function App() {
                   </div>
                   <button
                     id="btn-logout-header-finance"
-                    onClick={async () => {
-                      try {
-                        sessionStorage.removeItem('NUSANTARA_SESSION_ACTIVE');
-                        await logoutFromFirebase();
-                      } catch (e) {
-                        console.error('Keluar aplikasi gagal:', e);
-                      }
-                    }}
+                    onClick={handleLogout}
                     className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md px-2 py-0.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
                     title="Keluar dari sesi saat ini"
                   >
@@ -471,14 +483,7 @@ export default function App() {
               </div>
               <button
                 id="btn-logout-header"
-                onClick={async () => {
-                  try {
-                    sessionStorage.removeItem('NUSANTARA_SESSION_ACTIVE');
-                    await logoutFromFirebase();
-                  } catch (e) {
-                    console.error('Keluar aplikasi gagal:', e);
-                  }
-                }}
+                onClick={handleLogout}
                 className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md px-2 py-0.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
                 title="Keluar dari sesi saat ini"
               >
