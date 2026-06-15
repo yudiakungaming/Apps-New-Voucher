@@ -10,6 +10,7 @@ import { SheetsImport } from './components/SheetsImport';
 import { FirebaseSyncConfig } from './components/FirebaseSyncConfig';
 import { AuthGate } from './components/AuthGate';
 import { InputBuktiTransfer } from './components/InputBuktiTransfer';
+import { UserProfileModal } from './components/UserProfileModal';
 import { 
   isFirebaseConfigured, 
   saveSubmissionToFirestore, 
@@ -37,6 +38,7 @@ export default function App() {
   const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
   const [authUser, setAuthUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [currentHash, setCurrentHash] = useState(window.location.hash);
 
@@ -404,21 +406,30 @@ export default function App() {
 
               {/* User Info & Logout Button for Finance View */}
               {authUser && (
-                <div className="flex flex-col items-end gap-1.5 text-right py-1">
-                  <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
-                    <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
-                    <span className="truncate max-w-[200px] sm:max-w-none">
-                      Divisi: <strong className="font-sans font-black text-stone-900">{userProfile ? userProfile?.fullName : authUser?.email}</strong> 
-                      {userProfile ? ` (${userProfile.role})` : ''}
+                <div className="flex items-center gap-3">
+                  <div 
+                    onClick={() => setIsProfileOpen(true)}
+                    className="flex flex-col items-end py-1 hover:bg-stone-50 border border-transparent hover:border-stone-250 px-3 py-1.5 rounded-2xl transition cursor-pointer select-none"
+                    title="Klik untuk membuka menu profil & penyimpanan"
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
+                      <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
+                      <span className="truncate max-w-[150px] sm:max-w-[200px] font-sans font-black text-stone-900">
+                        {userProfile ? userProfile?.fullName : authUser?.email}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-stone-400 font-mono">
+                      {userProfile ? userProfile.role : 'Divisi Keuangan'}
                     </span>
                   </div>
+                  
                   <button
                     id="btn-logout-header-finance"
                     onClick={handleLogout}
-                    className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md px-2 py-0.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
+                    className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-755 bg-rose-50 hover:bg-rose-100 border border-rose-150 rounded-lg px-2 py-1.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
                     title="Keluar dari sesi saat ini"
                   >
-                    <span>Keluar Aplikasi (Logout)</span>
+                    <span>Logout</span>
                   </button>
                 </div>
               )}
@@ -473,21 +484,30 @@ export default function App() {
             </div>
 
             {/* Support Info & Logout Button */}
-            <div className="flex flex-col items-end gap-1.5 text-right py-1">
-              <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
-                <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
-                <span className="truncate max-w-[200px] sm:max-w-none">
-                  User Aktif: <strong className="font-sans font-black text-stone-900">{userProfile ? userProfile.fullName : (authUser ? authUser.email : 'Nur Wahyudi')}</strong> 
-                  {userProfile ? ` (${userProfile.role})` : ''}
+            <div className="flex items-center gap-3">
+              <div 
+                onClick={() => setIsProfileOpen(true)}
+                className="flex flex-col items-end py-1 hover:bg-stone-50 border border-transparent hover:border-stone-250 px-3 py-1.5 rounded-2xl transition cursor-pointer select-none"
+                title="Klik untuk membuka menu profil & penyimpanan"
+              >
+                <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
+                  <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
+                  <span className="truncate max-w-[150px] sm:max-w-[200px] font-sans font-black text-stone-900">
+                    {userProfile ? userProfile.fullName : (authUser ? authUser.email : 'Nur Wahyudi')}
+                  </span>
+                </div>
+                <span className="text-[10px] text-stone-400 font-mono">
+                  {userProfile ? userProfile.role : 'Divisi Keuangan'}
                 </span>
               </div>
+              
               <button
                 id="btn-logout-header"
                 onClick={handleLogout}
-                className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md px-2 py-0.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
+                className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-750 bg-rose-50 hover:bg-rose-100 border border-[#f3d8d8] rounded-lg px-2 py-1.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
                 title="Keluar dari sesi saat ini"
               >
-                <span>Keluar Aplikasi (Logout)</span>
+                <span>Logout</span>
               </button>
             </div>
           </div>
@@ -582,6 +602,14 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* User Profile Details & Storage Manager Modal */}
+      <UserProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        userProfile={userProfile}
+        authUser={authUser}
+      />
 
     </div>
   );

@@ -221,7 +221,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   const [notes, setNotes] = useState('');
 
   // Signatures
-  const [dibuatOleh, setDibuatOleh] = useState('Nur Wahyudi');
+  const [dibuatOleh, setDibuatOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_CREATOR_NAME') || 'Nur Wahyudi');
   const [disetujuiOleh, setDisetujuiOleh] = useState('Harijon');
   const [diverifikasiOleh, setDiverifikasiOleh] = useState('Andi Dhiya Salsabila');
   const [diverifikasiJabatan, setDiverifikasiJabatan] = useState('Keuangan');
@@ -428,7 +428,8 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setFileItems([]);
       setBuktiPembayaranFile(null);
       setBuktiPembayaranDrive(null);
-      setDibuatOleh(details?.sigDibuat || userProfile?.fullName || 'Nur Wahyudi');
+      const storedDefaultCreator = localStorage.getItem('NUSANTARA_DEFAULT_CREATOR_NAME');
+      setDibuatOleh(storedDefaultCreator || details?.sigDibuat || userProfile?.fullName || 'Nur Wahyudi');
       setDisetujuiOleh(details?.sigDisetujui || details?.sigDirKeuangan || 'Harijon');
       setDiverifikasiOleh(details?.sigKeuangan || 'Andi Dhiya Salsabila');
       setDiverifikasiJabatan('Keuangan');
