@@ -543,6 +543,17 @@ export const registerAuthChangeListener = (callback: (user: User | null) => void
 };
 
 // ═════════ GOOGLE DRIVE / OAUTH PERSISTENCE UTILITIES ═════════
+export interface ConnectedDrive {
+  email: string;
+  accessToken: string;
+  displayName: string;
+  photoURL?: string;
+  quotaUsed: number;   // Bytes
+  quotaLimit: number;  // Bytes
+  lastChecked: string; // ISO String
+  isExpired?: boolean;
+}
+
 let googleDriveTokenMemory: string | null = null;
 
 export const setGoogleDriveToken = (token: string | null) => {
@@ -554,16 +565,132 @@ export const setGoogleDriveToken = (token: string | null) => {
   }
 };
 
-export const getStoredGoogleDriveToken = (): string | null => {
-  if (googleDriveTokenMemory) return googleDriveTokenMemory;
+export const getConnectedDrives = (): ConnectedDrive[] => {
   try {
-    return localStorage.getItem('NUSANTARA_GOOGLE_DRIVE_TOKEN');
-  } catch {
-    return null;
+    const raw = localStorage.getItem('NUSANTARA_CONNECTED_DRIVES');
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Failed to parse connected drives list', e);
+  }
+
+  // Fallback / migration for legacy single token
+  const legacyToken = localStorage.getItem('NUSANTARA_GOOGLE_DRIVE_TOKEN');
+  if (legacyToken) {
+    const initialDrive: ConnectedDrive = {
+      email: 'akun.utama@gmail.com', // placeholder until fetched
+      accessToken: legacyToken,
+      displayName: 'Akun Utama',
+      quotaUsed: 0,
+      quotaLimit: 15 * 1024 * 1024 * 1024, // 15 GB
+      lastChecked: new Date().toISOString()
+    };
+    return [initialDrive];
+  }
+  return [];
+};
+
+export const saveConnectedDrives = (drives: ConnectedDrive[]) => {
+  try {
+    localStorage.setItem('NUSANTARA_CONNECTED_DRIVES', JSON.stringify(drives));
+    // Synced with legacy single token to maintain maximum compatibility with existing code
+    const activeDrive = drives.find(d => !d.isExpired && (d.quotaLimit - d.quotaUsed > 10 * 1024 * 1024));
+    const bestToken = activeDrive ? activeDrive.accessToken : (drives[0]?.accessToken || null);
+    setGoogleDriveToken(bestToken);
+  } catch (e) {
+    console.error('Failed to save connected drives list', e);
   }
 };
 
-export const googleDriveLogin = async (): Promise<{ user: User; accessToken: string }> => {
+export const fetchDriveQuotaMetadata = async (token: string): Promise<{
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  quotaUsed: number;
+  quotaLimit: number;
+}> => {
+  const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user,storageQuota', {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Drive quota details: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return {
+    email: data.user?.emailAddress || 'akun@gmail.com',
+    displayName: data.user?.displayName || 'Google Drive',
+    photoURL: data.user?.photoLink || '',
+    quotaUsed: parseInt(data.storageQuota?.usage || '0', 10),
+    quotaLimit: parseInt(data.storageQuota?.limit || '16106127360', 10) // default 15GB in bytes
+  };
+};
+
+export const refreshAllDrivesQuota = async (): Promise<ConnectedDrive[]> => {
+  const drives = getConnectedDrives();
+  if (drives.length === 0) return [];
+
+  const updatedDrives = await Promise.all(
+    drives.map(async (drive) => {
+      try {
+        const meta = await fetchDriveQuotaMetadata(drive.accessToken);
+        return {
+          ...drive,
+          email: meta.email,
+          displayName: meta.displayName,
+          photoURL: meta.photoURL,
+          quotaUsed: meta.quotaUsed,
+          quotaLimit: meta.quotaLimit,
+          lastChecked: new Date().toISOString(),
+          isExpired: false
+        };
+      } catch (err) {
+        console.warn(`Error refreshing quota for Drive ${drive.email}:`, err);
+        // Mark as expired if unauthorized or other connection failure
+        return {
+          ...drive,
+          isExpired: true
+        };
+      }
+    })
+  );
+
+  saveConnectedDrives(updatedDrives);
+  return updatedDrives;
+};
+
+export const getStoredGoogleDriveToken = (): string | null => {
+  // Let's implement the smart auto-chain priority switching:
+  // We return the first valid, unexpired token that has remaining space (> 10MB free)
+  const drives = getConnectedDrives();
+  if (drives.length === 0) {
+    if (googleDriveTokenMemory) return googleDriveTokenMemory;
+    try {
+      return localStorage.getItem('NUSANTARA_GOOGLE_DRIVE_TOKEN');
+    } catch {
+      return null;
+    }
+  }
+
+  // Find first active, unexpired drive with at least 15MB free space left
+  const availableDrive = drives.find(d => {
+    if (d.isExpired) return false;
+    const remainingBytes = d.quotaLimit - d.quotaUsed;
+    return remainingBytes > 15 * 1024 * 1024; // 15MB
+  });
+
+  if (availableDrive) {
+    return availableDrive.accessToken;
+  }
+
+  // If all are full or expired, fallback to the first active one, or the very first one
+  const fallbackDrive = drives.find(d => !d.isExpired) || drives[0];
+  return fallbackDrive ? fallbackDrive.accessToken : null;
+};
+
+export const googleDriveLogin = async (): Promise<{ user: User; accessToken: string; driveDetails?: any }> => {
   if (!firebaseAuth) {
     throw new Error('Database autentikasi belum beroperasi.');
   }
@@ -571,6 +698,10 @@ export const googleDriveLogin = async (): Promise<{ user: User; accessToken: str
   const provider = new GoogleAuthProvider();
   // Request Google Drive File write/edit permissions
   provider.addScope('https://www.googleapis.com/auth/drive.file');
+  // Prompt account selection to make it extremely easy to connect multiple DIFFERENT accounts!
+  provider.setCustomParameters({
+    prompt: 'select_account'
+  });
   
   try {
     const result = await signInWithPopup(firebaseAuth, provider);
@@ -579,8 +710,44 @@ export const googleDriveLogin = async (): Promise<{ user: User; accessToken: str
       throw new Error('Sesi otentikasi Google gagal menyuplai kunci akses (Access Token).');
     }
     
-    setGoogleDriveToken(credential.accessToken);
-    return { user: result.user, accessToken: credential.accessToken };
+    // Fetch detailed metadata from Drive API for accurate storage & user matching
+    let driveDetails = null;
+    try {
+      driveDetails = await fetchDriveQuotaMetadata(credential.accessToken);
+    } catch (apiErr) {
+      console.warn('Failed to fetch Drive metadata, using fallback details', apiErr);
+      driveDetails = {
+        email: result.user.email || 'akun.baru@gmail.com',
+        displayName: result.user.displayName || 'Google Drive',
+        photoURL: result.user.photoURL || '',
+        quotaUsed: 0,
+        quotaLimit: 15 * 1024 * 1024 * 1024
+      };
+    }
+
+    // Load existing connected drives list
+    const currentDrives = getConnectedDrives();
+    const newDrive: ConnectedDrive = {
+      email: driveDetails.email,
+      accessToken: credential.accessToken,
+      displayName: driveDetails.displayName,
+      photoURL: driveDetails.photoURL,
+      quotaUsed: driveDetails.quotaUsed,
+      quotaLimit: driveDetails.quotaLimit,
+      lastChecked: new Date().toISOString(),
+      isExpired: false
+    };
+
+    // Replace if email exists, otherwise index appends
+    const index = currentDrives.findIndex(d => d.email.toLowerCase() === driveDetails.email.toLowerCase());
+    if (index !== -1) {
+      currentDrives[index] = newDrive;
+    } else {
+      currentDrives.push(newDrive);
+    }
+
+    saveConnectedDrives(currentDrives);
+    return { user: result.user, accessToken: credential.accessToken, driveDetails };
   } catch (error: any) {
     console.error('Error Google Drive connection:', error);
     throw error;

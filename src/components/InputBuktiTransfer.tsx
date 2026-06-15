@@ -6,8 +6,10 @@ import {
   isFirebaseConfigured,
   googleDriveLogin,
   getStoredGoogleDriveToken,
-  setGoogleDriveToken
+  setGoogleDriveToken,
+  getConnectedDrives
 } from '../firebase';
+import { DriveAccountsManager } from './DriveAccountsManager';
 import { formatRupiah, formatDateIndonesian, convertImageToPdf } from '../utils';
 import { 
   ArrowLeft, 
@@ -74,8 +76,8 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
 
   // Check Drive connection status on mount and userProfile changes
   useEffect(() => {
-    const token = getStoredGoogleDriveToken();
-    if (token) {
+    const drives = getConnectedDrives();
+    if (drives.length > 0) {
       setIsDriveConnected(true);
     }
   }, []);
@@ -959,50 +961,7 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
               </h3>
 
               {/* GOOGLE DRIVE INTEGRATION STATUS */}
-              <div className="border border-stone-200 rounded-2xl bg-stone-50 p-4 space-y-3 shadow-3xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Cloud size={15} className={isDriveConnected ? "text-emerald-500 shrink-0" : "text-stone-400 shrink-0"} />
-                    <span className="text-[10px] font-mono font-black text-stone-850 uppercase tracking-widest">
-                      KONEKSI GOOGLE DRIVE
-                    </span>
-                  </div>
-                  {isDriveConnected ? (
-                    <span className="inline-flex items-center gap-1 text-[9px] font-mono font-black text-emerald-700 bg-emerald-50 rounded border border-emerald-250 uppercase px-2 py-0.5">
-                       TERSAMBUNG
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[9px] font-mono font-black text-amber-700 bg-amber-50 rounded border border-amber-250 uppercase px-2 py-0.5 animate-pulse">
-                       TERPUTUS
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-[10px] text-stone-500 leading-relaxed font-sans">
-                  {isDriveConnected 
-                    ? 'Unggahan bukti pembayaran akan otomatis ditempatkan ke dalam folder Voucher-APP utama Google Drive Anda secara terstruktur.'
-                    : 'Aktifkan Google Drive agar seluruh file bukti pembayaran sinkron otomatis ke folder transaksi utama.'
-                  }
-                </p>
-
-                {!isDriveConnected && (
-                  <button
-                    type="button"
-                    onClick={handleConnectDrive}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-amber-50 hover:bg-amber-100 text-[#a58421] border border-amber-200 rounded-xl text-[10px] font-mono font-black uppercase transition-all duration-150 active:scale-[0.98] cursor-pointer shadow-3xs"
-                  >
-                    <Link size={12} className="text-amber-500 animate-pulse" />
-                    Hubungkan Google Drive
-                  </button>
-                )}
-
-                {isDriveConnected && (
-                  <div className="flex items-center justify-between text-[10px] font-mono font-bold text-stone-400 pt-0.5">
-                    <span>Target Folder Utama:</span>
-                    <span className="text-stone-700 bg-white px-2 py-0.5 border border-stone-150 rounded font-mono text-[9px]">Voucher-APP/</span>
-                  </div>
-                )}
-              </div>
+              <DriveAccountsManager onConnectionChange={setIsDriveConnected} />
 
               {isSuccess && (
                 <div className="p-5 border border-emerald-200 bg-emerald-50/40 rounded-2xl text-center space-y-4 animate-fade-in shadow-2xs">

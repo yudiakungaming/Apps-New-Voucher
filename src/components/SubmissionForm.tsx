@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Submission, SubmissionItem, PaymentMethod, REQUIRED_TRANSACTION_DOCS } from '../types';
-import { googleDriveLogin, getStoredGoogleDriveToken, setGoogleDriveToken } from '../firebase';
+import { 
+  googleDriveLogin, 
+  getStoredGoogleDriveToken, 
+  setGoogleDriveToken, 
+  getConnectedDrives 
+} from '../firebase';
+import { DriveAccountsManager } from './DriveAccountsManager';
 import { Trash2, Plus, ArrowLeft, Save, AlertCircle, Sparkles, Cloud, Loader2 } from 'lucide-react';
 import { generateF1PdfBytes, generateF2PdfBytes, formatDateIndonesian, convertImageToPdf } from '../utils';
 
@@ -251,8 +257,8 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
 
   // Check Drive connection status
   useEffect(() => {
-    const token = getStoredGoogleDriveToken();
-    if (token) {
+    const drives = getConnectedDrives();
+    if (drives.length > 0) {
       setIsDriveConnected(true);
     }
   }, []);
@@ -1118,19 +1124,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           )}
 
           {!isDriveConnected ? (
-            <div className="p-6 bg-white border border-stone-200 rounded-xl text-center space-y-3 flex flex-col items-center">
-              <p className="text-xs text-stone-500 max-w-sm">
-                Hubungkan akun Google/Drive Anda untuk memperbolehkan unggah lampiran bukti transaksi.
-              </p>
-              <button
-                type="button"
-                onClick={handleConnectDrive}
-                className="inline-flex items-center gap-2 bg-stone-900 hover:bg-stone-850 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-xs"
-              >
-                <Cloud size={14} className="text-[#D4AF37]" />
-                Hubungkan Google Drive Aman
-              </button>
-            </div>
+            <DriveAccountsManager onConnectionChange={setIsDriveConnected} />
           ) : (
             <div className="space-y-6">
               {/* Segmented control to choose between separate vs merged upload */}
@@ -1415,6 +1409,11 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                     )}
                   </div>
                 </div>
+              </div>
+
+              {/* Multi Google Drive Accounts Manager */}
+              <div className="border-t border-stone-200 pt-5 mt-6">
+                <DriveAccountsManager onConnectionChange={setIsDriveConnected} />
               </div>
             </div>
           )}
