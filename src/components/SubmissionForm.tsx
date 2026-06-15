@@ -222,13 +222,13 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
 
   // Signatures
   const [dibuatOleh, setDibuatOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_CREATOR_NAME') || 'Nur Wahyudi');
-  const [disetujuiOleh, setDisetujuiOleh] = useState('Harijon');
-  const [diverifikasiOleh, setDiverifikasiOleh] = useState('Andi Dhiya Salsabila');
-  const [diverifikasiJabatan, setDiverifikasiJabatan] = useState('Keuangan');
-  const [disetujuiOleh2, setDisetujuiOleh2] = useState('H. A. Nursyam Halid');
-  const [disetujuiJabatan2, setDisetujuiJabatan2] = useState('Direktur Utama');
-  const [dibukukanOleh, setDibukukanOleh] = useState('Sri Ekowati');
-  const [dibukukanJabatan, setDibukukanJabatan] = useState('Accounting');
+  const [disetujuiOleh, setDisetujuiOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_APPROVER_NAME') || 'Harijon');
+  const [diverifikasiOleh, setDiverifikasiOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_VERIFIER_NAME') || 'Andi Dhiya Salsabila');
+  const [diverifikasiJabatan, setDiverifikasiJabatan] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_VERIFIER_JABATAN') || 'Keuangan');
+  const [disetujuiOleh2, setDisetujuiOleh2] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_APPROVER2_NAME') || 'H. A. Nursyam Halid');
+  const [disetujuiJabatan2, setDisetujuiJabatan2] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_APPROVER2_JABATAN') || 'Direktur Utama');
+  const [dibukukanOleh, setDibukukanOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_BOOKKEEPER_NAME') || 'Sri Ekowati');
+  const [dibukukanJabatan, setDibukukanJabatan] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_BOOKKEEPER_JABATAN') || 'Accounting');
 
   // Table items
   const [items, setItems] = useState<SubmissionItem[]>([
@@ -429,14 +429,22 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setBuktiPembayaranFile(null);
       setBuktiPembayaranDrive(null);
       const storedDefaultCreator = localStorage.getItem('NUSANTARA_DEFAULT_CREATOR_NAME');
+      const storedDefaultApprover = localStorage.getItem('NUSANTARA_DEFAULT_APPROVER_NAME');
+      const storedDefaultVerifier = localStorage.getItem('NUSANTARA_DEFAULT_VERIFIER_NAME');
+      const storedDefaultVerifierJabatan = localStorage.getItem('NUSANTARA_DEFAULT_VERIFIER_JABATAN');
+      const storedDefaultApprover2 = localStorage.getItem('NUSANTARA_DEFAULT_APPROVER2_NAME');
+      const storedDefaultApprover2Jabatan = localStorage.getItem('NUSANTARA_DEFAULT_APPROVER2_JABATAN');
+      const storedDefaultBookkeeper = localStorage.getItem('NUSANTARA_DEFAULT_BOOKKEEPER_NAME');
+      const storedDefaultBookkeeperJabatan = localStorage.getItem('NUSANTARA_DEFAULT_BOOKKEEPER_JABATAN');
+
       setDibuatOleh(storedDefaultCreator || details?.sigDibuat || userProfile?.fullName || 'Nur Wahyudi');
-      setDisetujuiOleh(details?.sigDisetujui || details?.sigDirKeuangan || 'Harijon');
-      setDiverifikasiOleh(details?.sigKeuangan || 'Andi Dhiya Salsabila');
-      setDiverifikasiJabatan('Keuangan');
-      setDisetujuiOleh2(details?.sigDirektur || 'H. A. Nursyam Halid');
-      setDisetujuiJabatan2('Direktur Utama');
-      setDibukukanOleh(details?.sigAccounting || 'Sri Ekowati');
-      setDibukukanJabatan('Accounting');
+      setDisetujuiOleh(storedDefaultApprover || details?.sigDisetujui || details?.sigDirKeuangan || 'Harijon');
+      setDiverifikasiOleh(storedDefaultVerifier || details?.sigKeuangan || 'Andi Dhiya Salsabila');
+      setDiverifikasiJabatan(storedDefaultVerifierJabatan || 'Keuangan');
+      setDisetujuiOleh2(storedDefaultApprover2 || details?.sigDirektur || 'H. A. Nursyam Halid');
+      setDisetujuiJabatan2(storedDefaultApprover2Jabatan || 'Direktur Utama');
+      setDibukukanOleh(storedDefaultBookkeeper || details?.sigAccounting || 'Sri Ekowati');
+      setDibukukanJabatan(storedDefaultBookkeeperJabatan || 'Accounting');
 
       setItems([
         { id: Math.random().toString(), no: 1, item: '', jumlahVolume: '', total: 0, keterangan: '' }
