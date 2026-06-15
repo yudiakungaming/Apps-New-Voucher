@@ -212,6 +212,30 @@ export const mapFirestoreToSubmission = (docId: string, data: any): Submission =
   };
 };
 
+// Deeply sanitize objects to replace undefined keys or values with null/empty types to prevent Firestore write crashes
+export const cleanUndefined = (obj: any): any => {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (obj instanceof Date) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => cleanUndefined(item));
+  }
+  if (typeof obj === 'object') {
+    const cleaned: any = {};
+    for (const key of Object.keys(obj)) {
+      const val = obj[key];
+      if (val !== undefined) {
+        cleaned[key] = cleanUndefined(val);
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+};
+
 export const mapSubmissionToFirestore = (
   sub: Submission, 
   userEmail?: string, 
@@ -221,9 +245,9 @@ export const mapSubmissionToFirestore = (
 ): any => {
   const finalStatus = sub.status || (sub.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas');
   const isLunas = finalStatus === 'Lunas';
-  const computedTotal = sub.items.reduce((sum, item) => sum + item.total, 0);
-  const firstItemKeterangan = sub.items[0]?.keterangan || '';
-  const firstItemName = sub.items[0]?.item || '';
+  const computedTotal = Array.isArray(sub.items) ? sub.items.reduce((sum, item) => sum + (item.total || 0), 0) : 0;
+  const firstItemKeterangan = (sub.items && sub.items[0]?.keterangan) || '';
+  const firstItemName = (sub.items && sub.items[0]?.item) || '';
 
   let shortKode = 'HO';
   if (sub.kode) {
@@ -237,23 +261,25 @@ export const mapSubmissionToFirestore = (
     }
   }
 
-  const cleanItems = sub.items.map((item, idx) => {
+  const subItemsList = Array.isArray(sub.items) ? sub.items : [];
+  const cleanItems = subItemsList.map((item, idx) => {
     // Extract numbers from volume (e.g. "1 Lot" -> 1, "5 Box" -> 5)
-    const parsedQty = parseInt(item.jumlahVolume.replace(/[^0-9]/g, '')) || 1;
+    const qtyStr = String(item.jumlahVolume || '1');
+    const parsedQty = parseInt(qtyStr.replace(/[^0-9]/g, '')) || 1;
     
     return {
-      nama: item.item,
-      nominal: item.total, 
+      nama: item.item || '',
+      nominal: item.total || 0, 
       qty: parsedQty,
-      jenis: sub.jenisPengajuan,
+      jenis: sub.jenisPengajuan || '',
       kode: shortKode,
-      lokasi: sub.lokasi,
+      lokasi: sub.lokasi || 'Lt. 1',
       noInvoice: item.keterangan || '',
       keterangan: item.keterangan || '',
       status: finalStatus,
-      tanggal: sub.tanggal,
+      tanggal: sub.tanggal || '',
       tglBayar: isLunas && sub.tanggal ? new Date(sub.tanggal) : null,
-      totalNominal: item.total
+      totalNominal: item.total || 0
     };
   });
 
@@ -270,15 +296,15 @@ export const mapSubmissionToFirestore = (
     created_at: new Date(),
     createdBy: userId || 'pwsDJv3bKHQamy89PDaAeCoZQcU2',
     createdByEmail: userEmail || 'admin@nmsa.com',
-    dibayarkanKepada: sub.dibayarkanKepada,
-    dibayarkan_kepada: sub.dibayarkanKepada,
-    dibayarkanDengan: sub.dibayarkanDengan,
-    dibayarkan_dengan: sub.dibayarkanDengan,
+    dibayarkanKepada: sub.dibayarkanKepada || '',
+    dibayarkan_kepada: sub.dibayarkanKepada || '',
+    dibayarkanDengan: sub.dibayarkanDengan || 'Tunai',
+    dibayarkan_dengan: sub.dibayarkanDengan || 'Tunai',
     status: finalStatus,
     totalNominal: computedTotal,
     total_nominal: computedTotal,
-    noInvoice: sub.kode,
-    no_invoice: sub.kode,
+    noInvoice: sub.kode || '',
+    no_invoice: sub.kode || '',
     isi_invoice: firstItemName,
     isiInvoice: firstItemName,
     files: [],
@@ -294,20 +320,20 @@ export const mapSubmissionToFirestore = (
     
     // Double save native fields so pulling it back preserves signatures
     id: sub.id,
-    lokasi: sub.lokasi,
-    tanggal: sub.tanggal,
-    jenisPengajuan: sub.jenisPengajuan,
-    jenis_pengajuan: sub.jenisPengajuan,
-    jenis: sub.jenisPengajuan,
+    lokasi: sub.lokasi || 'Lt. 1',
+    tanggal: sub.tanggal || '',
+    jenisPengajuan: sub.jenisPengajuan || '',
+    jenis_pengajuan: sub.jenisPengajuan || '',
+    jenis: sub.jenisPengajuan || '',
     kode: shortKode,
-    dibuatOleh: sub.dibuatOleh,
-    disetujuiOleh: sub.disetujuiOleh,
-    diverifikasiOleh: sub.diverifikasiOleh,
-    diverifikasiJabatan: sub.diverifikasiJabatan,
-    disetujuiOleh2: sub.disetujuiOleh2,
-    disetujuiJabatan2: sub.disetujuiJabatan2,
-    dibukukanOleh: sub.dibukukanOleh,
-    dibukukanJabatan: sub.dibukukanJabatan
+    dibuatOleh: sub.dibuatOleh || '',
+    disetujuiOleh: sub.disetujuiOleh || '',
+    diverifikasiOleh: sub.diverifikasiOleh || '',
+    diverifikasiJabatan: sub.diverifikasiJabatan || '',
+    disetujuiOleh2: sub.disetujuiOleh2 || '',
+    disetujuiJabatan2: sub.disetujuiJabatan2 || '',
+    dibukukanOleh: sub.dibukukanOleh || '',
+    dibukukanJabatan: sub.dibukukanJabatan || ''
   };
 };
 
@@ -613,7 +639,8 @@ export const saveSubmissionToFirestore = async (
       userCompanyId,
       userCompanyName
     );
-    await setDoc(doc(firestoreDb, path, submission.id), fPayload);
+    const cleanedPayload = cleanUndefined(fPayload);
+    await setDoc(doc(firestoreDb, path, submission.id), cleanedPayload);
     console.log(`☁️ Submission ${submission.id} mapped and saved in Firestore under company ${userCompanyId}.`);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${path}/${submission.id}`);
