@@ -489,15 +489,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
               </tbody>
             </table>
 
-            {/* Elegant bottom-right supervisor initials box */}
-            <div className="flex justify-end mt-4">
-              <div className="border border-black p-1.5 w-[140px] text-center bg-white flex flex-col" style={{ height: '65px' }}>
-                <span className="text-[9px] font-bold text-black uppercase tracking-wider border-b border-black pb-0.5">Paraf Pemeriksaan</span>
-                <div className="flex-1 flex items-center justify-center">
-                  {/* Empty signature box */}
-                </div>
-              </div>
-            </div>
+
 
           </div>
         )}
