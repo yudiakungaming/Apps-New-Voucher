@@ -494,7 +494,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
               <div className="border border-black p-1.5 w-[140px] text-center bg-white flex flex-col" style={{ height: '65px' }}>
                 <span className="text-[9px] font-bold text-black uppercase tracking-wider border-b border-black pb-0.5">Paraf Pemeriksaan</span>
                 <div className="flex-1 flex items-center justify-center">
-                  <span className="text-[8px] text-stone-300 italic uppercase tracking-widest font-mono">Supervisor</span>
+                  {/* Empty signature box */}
                 </div>
               </div>
             </div>
@@ -613,7 +613,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                 NOTE :
               </span>
               <div className="border-[1.5px] border-black p-4 min-h-[70px] rounded-xs text-sm text-stone-800 leading-relaxed font-sans bg-stone-50/30">
-                {submission.notes ? submission.notes : <span className="text-stone-300 italic">Tidak ada catatan tamabahan.</span>}
+                {submission.notes ? submission.notes : ""}
               </div>
             </div>
 
