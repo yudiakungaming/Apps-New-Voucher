@@ -248,6 +248,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <span className="text-stone-700 font-bold">{userRole}</span>
                 </div>
               </div>
+
+              <div className="space-y-1 md:col-span-2 mt-1.5 pt-3.5 border-t border-stone-100">
+                <span className="text-[#917118] block text-[9px] font-mono font-black uppercase tracking-wider flex items-center gap-1.5">
+                  <Database size={12} /> Kapasitas Penyimpanan Portal & Sinkronisasi basis data
+                </span>
+                <div className="bg-amber-50/20 px-4 py-3 rounded-2xl border border-amber-200/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs text-[#5c470e] mt-1.5 shadow-3xs">
+                  <div className="space-y-1">
+                    <p className="font-extrabold text-stone-850 flex items-center gap-1.5">
+                      Batas Penyimpanan Dokumen: 
+                      <span className="font-mono text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md font-black border border-emerald-250 text-[10px]">
+                        TIDAK TERBATAS (MINIMAL 10.000+ HINGGA SANGAT PENUH)
+                      </span>
+                    </p>
+                    <p className="text-[10px] text-stone-500 font-normal leading-relaxed">
+                      Sistem menggunakan klaster penyimpanan modern dengan database Firestore non-relasional yang aman secara real-time. Seluruh data transaksi yang telah Anda buat dijamin tersimpan secara permanen dan tidak akan pernah terhapus otomatis oleh sistem.
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-emerald-800 font-mono font-extrabold text-[9px] bg-emerald-100 px-3 py-1.5 rounded-xl uppercase tracking-wider text-center border border-emerald-250 shadow-3xs">
+                    100% AMAN & PERMANEN
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
