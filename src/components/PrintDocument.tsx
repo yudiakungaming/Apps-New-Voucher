@@ -32,6 +32,7 @@ export interface RenderedPage {
   fileIndex: number;
   pageNumber: number;
   dataUrl: string;
+  isLandscape?: boolean;
 }
 
 const loadPdfJs = (): Promise<any> => {
@@ -195,8 +196,8 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                 setLoadingProgress(`Merender PDF ${file.name} - Halaman ${pNum} dari ${pdf.numPages}...`);
               }
               const page = await pdf.getPage(pNum);
-              // Scale carefully to render gorgeous quality and fit nicely onto standard display/print dimensions
-              const viewport = page.getViewport({ scale: 1.5 });
+              // Scale to 2.2 for high-definition print resolution which preserves micro-text readability
+              const viewport = page.getViewport({ scale: 2.2 });
               const canvas = document.createElement('canvas');
               const context = canvas.getContext('2d');
               if (!context) continue;
@@ -209,24 +210,44 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                 viewport: viewport
               }).promise;
 
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+              const isLandscape = viewport.width > viewport.height;
               tempPages.push({
                 id: `${fileId}-p${pNum}`,
                 fileName: file.name,
                 fileIndex: i,
                 pageNumber: pNum,
-                dataUrl
+                dataUrl,
+                isLandscape
               });
             }
           } else if (fileBlob) {
             // Treat as single-page image
             const dataUrl = URL.createObjectURL(fileBlob);
+            
+            // Asynchronously load the image to determine its orientation (portrait or landscape)
+            let isLandscape = false;
+            try {
+              const img = new Image();
+              img.src = dataUrl;
+              await new Promise((resolve) => {
+                img.onload = () => {
+                  isLandscape = img.width > img.height;
+                  resolve(null);
+                };
+                img.onerror = () => resolve(null);
+              });
+            } catch (e) {
+              console.warn('Failed to parse image orientation, defaulting to portrait', e);
+            }
+
             tempPages.push({
               id: `${fileId}-img`,
               fileName: file.name,
               fileIndex: i,
               pageNumber: 1,
-              dataUrl
+              dataUrl,
+              isLandscape
             });
           }
         }
@@ -678,17 +699,18 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
               {activeTab === 'both' && (
                 <div className="w-[210mm] border-t-2 border-dashed border-stone-300 py-3 print:hidden flex justify-center">
                   <span className="text-xs bg-stone-100 text-[#917118] px-3 py-1 rounded-full font-semibold uppercase font-mono">
-                    BATAS HALAMAN {fileLabel.toUpperCase()} (PAGE BREAK)
+                    BATAS HALAMAN {fileLabel.toUpperCase()} (PAGE BREAK - LAMPIRAN)
                   </span>
                 </div>
               )}
 
-              <div className="w-[210mm] min-h-[297mm] h-[297mm] bg-white border border-stone-250 shadow-md rounded-xl print:shadow-none print:border-none print:rounded-none print:p-0 print:m-0 page-break flex items-center justify-center relative overflow-hidden bg-stone-50/10">
-                {/* Visualizer Image matching exactly the PDF pages as requested */}
+              {/* Responsive container matching natural height with no hardcoding limit at 297mm */}
+              <div className="w-[210mm] h-auto bg-white border border-stone-250 shadow-md rounded-xl print:shadow-none print:border-none print:rounded-none print:p-0 print:m-0 page-break relative overflow-hidden bg-stone-50/10">
+                {/* Visualizer Image matching exactly the PDF pages layout as requested */}
                 <img
                   src={page.dataUrl}
                   alt={page.fileName}
-                  className="max-w-full max-h-full object-contain print:max-h-screen"
+                  className="w-full h-auto block"
                 />
 
                 {/* Floating screen-only badge to maintain complete page counts */}
@@ -709,7 +731,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
       <style>{`
         @media print {
           @page {
-            size: A4;
+            size: A4 portrait;
             margin: 12mm 15mm 12mm 15mm;
           }
           body {
@@ -729,6 +751,13 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             width: 100% !important;
             height: auto !important;
             min-height: 0 !important;
+          }
+          .page-break img {
+            width: 100% !important;
+            height: auto !important;
+            display: block !important;
+            max-width: 100% !important;
+            max-height: none !important;
           }
           .page-break:not(:last-child) {
             page-break-after: always !important;
