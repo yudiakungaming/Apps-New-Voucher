@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { Submission } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Submission, ActivityLog } from '../types';
 import { formatRupiah, formatDateIndonesian } from '../utils';
-import { Search, Eye, Edit2, Trash2, Calendar, MapPin, DollarSign, Plus, Copy, RefreshCw, Cloud, FileText, Database } from 'lucide-react';
+import { Search, Eye, Edit2, Trash2, Calendar, MapPin, DollarSign, Plus, Copy, RefreshCw, Cloud, FileText, Database, History } from 'lucide-react';
+import { loadActivityLogsFromFirestore } from '../firebase';
 
 interface SubmissionsListProps {
   submissions: Submission[];
@@ -27,9 +28,34 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [jenisFilter, setJenisFilter] = useState<string>('');
   
-  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet'>('standard');
+  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs'>('standard');
   const [activeSheetTab, setActiveSheetTab] = useState<string>('Data Sinkron');
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [logsSearchTerm, setLogsSearchTerm] = useState('');
+
+  // Fetch activity logs when audit logs tab is open
+  const reloadLogs = () => {
+    setIsLoadingLogs(true);
+    loadActivityLogsFromFirestore()
+      .then(data => {
+        setLogs(data);
+      })
+      .catch(err => {
+        console.error("Gagal mematikan/mengambil log riwayat:", err);
+      })
+      .finally(() => {
+        setIsLoadingLogs(false);
+      });
+  };
+
+  useEffect(() => {
+    if (layoutMode === 'audit_logs') {
+      reloadLogs();
+    }
+  }, [layoutMode]);
 
   // Helper to extract item texts as a concatenated string (Isi Invoice)
   const getIsiInvoice = (sub: Submission) => {
@@ -115,6 +141,18 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
     };
   }, [filteredSubmissions]);
 
+  // Filter on activity logs
+  const filteredLogs = useMemo(() => {
+    if (!logs) return [];
+    return logs.filter(log => {
+      const text = (log.details || '').toLowerCase() + ' ' + 
+                   (log.userName || '').toLowerCase() + ' ' + 
+                   (log.userEmail || '').toLowerCase() + ' ' +
+                   (log.submissionCode || '').toLowerCase();
+      return text.includes(logsSearchTerm.toLowerCase());
+    });
+  }, [logs, logsSearchTerm]);
+
   // Grouped amounts for quick charts/budget
   const methodStats = useMemo(() => {
     let tunai = 0;
@@ -131,7 +169,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
     <div className="space-y-6">
       {/* Dynamic View Layout Switcher Bar */}
       <div className="bg-white border border-stone-250 rounded-2xl p-2 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-3xs">
-        <div className="flex items-center gap-1.5 p-0.5 bg-stone-50 rounded-xl border border-stone-100">
+        <div className="flex flex-wrap items-center gap-1.5 p-0.5 bg-stone-50 rounded-xl border border-stone-100">
           <button
             onClick={() => setLayoutMode('standard')}
             className={`flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
@@ -157,6 +195,18 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
           >
             <FileText size={13} className={layoutMode === 'spreadsheet' ? 'text-white' : ''} />
             <span>Tampilan Spreadsheet (Excel / Google Sheets)</span>
+          </button>
+
+          <button
+            onClick={() => setLayoutMode('audit_logs')}
+            className={`flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              layoutMode === 'audit_logs'
+                ? 'bg-[#917118] text-white shadow-xs font-black'
+                : 'bg-transparent text-stone-500 hover:text-[#917118] hover:bg-stone-150/50'
+            }`}
+          >
+            <History size={13} className={layoutMode === 'audit_logs' ? 'text-white' : ''} />
+            <span>Log Riwayat Audit (Aktivitas)</span>
           </button>
         </div>
         
@@ -216,76 +266,78 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       )}
 
       {/* Control Panel: Search & Filters */}
-      <div className="p-5 bg-white rounded-2xl border border-stone-200 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex-1 flex flex-col md:flex-row items-stretch gap-3">
-          {/* Text Search */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
-            <input
-              type="text"
-              placeholder="Cari penerima, items, lokasi, atau kode..."
-              className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+      {layoutMode === 'standard' && (
+        <div className="p-5 bg-white rounded-2xl border border-stone-200 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+          <div className="flex-1 flex flex-col md:flex-row items-stretch gap-3">
+            {/* Text Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
+              <input
+                type="text"
+                placeholder="Cari penerima, items, lokasi, atau kode..."
+                className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Jenis Filter Input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
+              <input
+                type="text"
+                placeholder="Filter jenis pengajuan (e.g. Petty Cash, Gaji)..."
+                className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
+                value={jenisFilter}
+                onChange={(e) => setJenisFilter(e.target.value)}
+              />
+            </div>
+
+            {/* Method Filter */}
+            <select
+              className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+            >
+              <option value="All">Semua Metode</option>
+              <option value="Tunai">Tunai</option>
+              <option value="Cek/Transfer">Cek/Transfer</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="All">Semua Status</option>
+              <option value="Lunas">Lunas</option>
+              <option value="Belum Lunas">Belum Lunas</option>
+            </select>
           </div>
 
-          {/* Jenis Filter Input */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
-            <input
-              type="text"
-              placeholder="Filter jenis pengajuan (e.g. Petty Cash, Gaji)..."
-              className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
-              value={jenisFilter}
-              onChange={(e) => setJenisFilter(e.target.value)}
-            />
+          {/* Action Button Container */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+            <button
+              onClick={onOpenBuktiTransfer}
+              id="btn-upload-bukti-transfer"
+              className="flex items-center justify-center gap-1 px-4 py-2.5 border border-stone-250 bg-white hover:bg-stone-50 hover:border-stone-400 text-stone-700 font-bold rounded-xl transition shadow-3xs cursor-pointer text-xs"
+            >
+              <RefreshCw size={14} className="text-amber-500 mr-1" />
+              <span>Upload Bukti Bayar</span>
+            </button>
+
+            <button
+              onClick={onAddNew}
+              id="btn-add-new-submission"
+              className="flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#Bca031] text-stone-900 font-bold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300 cursor-pointer text-xs"
+            >
+              <Plus size={16} />
+              <span>Input Pengajuan Baru</span>
+            </button>
           </div>
-
-          {/* Method Filter */}
-          <select
-            className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
-            value={methodFilter}
-            onChange={(e) => setMethodFilter(e.target.value)}
-          >
-            <option value="All">Semua Metode</option>
-            <option value="Tunai">Tunai</option>
-            <option value="Cek/Transfer">Cek/Transfer</option>
-          </select>
-
-          {/* Status Filter */}
-          <select
-            className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="All">Semua Status</option>
-            <option value="Lunas">Lunas</option>
-            <option value="Belum Lunas">Belum Lunas</option>
-          </select>
         </div>
-
-        {/* Action Button Container */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-          <button
-            onClick={onOpenBuktiTransfer}
-            id="btn-upload-bukti-transfer"
-            className="flex items-center justify-center gap-1 px-4 py-2.5 border border-stone-250 bg-white hover:bg-stone-50 hover:border-stone-400 text-stone-700 font-bold rounded-xl transition shadow-3xs cursor-pointer text-xs"
-          >
-            <RefreshCw size={14} className="text-amber-500 mr-1" />
-            <span>Upload Bukti Bayar</span>
-          </button>
-
-          <button
-            onClick={onAddNew}
-            id="btn-add-new-submission"
-            className="flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#Bca031] text-stone-900 font-bold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300 cursor-pointer text-xs"
-          >
-            <Plus size={16} />
-            <span>Input Pengajuan Baru</span>
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Main Content Layout Block: Standard List vs Google Sheets Simulator */}
       {layoutMode === 'standard' ? (
@@ -423,7 +475,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
             </table>
           </div>
         </div>
-      ) : (
+      ) : layoutMode === 'spreadsheet' ? (
         /* Google Sheets Table Simulator View with tabs & sum status */
         <div className="bg-[#f9fbfd] rounded-2xl border border-stone-300 shadow-sm overflow-hidden flex flex-col font-sans select-none animate-fade-in">
           {/* Google Sheets Header & Topbar */}
@@ -827,6 +879,150 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                 <span className="font-extrabold">Rp {formatRupiah(spreadsheetSum)}</span>
               </div>
             </div>
+          </div>
+        </div>
+      ) : (
+        /* Log Riwayat Audit Detail View */
+        <div className="bg-white rounded-2xl border border-stone-250 shadow-sm overflow-hidden animate-fade-in">
+          {/* Header Activity Log panel */}
+          <div className="px-6 py-5 bg-stone-50 border-b border-stone-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-stone-900">Riwayat Audit & Aktivitas Aplikasi</span>
+                <span className="text-[10px] bg-[#917118] text-white font-mono font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  {filteredLogs.length} Entri Terdaftar
+                </span>
+              </div>
+              <p className="text-xs text-stone-500">Log sinkronisasi transaksi, persetujuan admin, and pengunggahan bukti pembayaran Google Drive secara real-time.</p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stone sm:items-center gap-2">
+              {/* Search Log */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={14} />
+                <input
+                  type="text"
+                  placeholder="Cari kata kunci log..."
+                  className="pl-8 pr-4 py-1.5 w-full sm:w-56 bg-white border border-stone-250 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#917118] focus:border-transparent text-stone-700 font-mono"
+                  value={logsSearchTerm}
+                  onChange={(e) => setLogsSearchTerm(e.target.value)}
+                />
+              </div>
+
+              {/* Refresh Button */}
+              <button
+                onClick={reloadLogs}
+                disabled={isLoadingLogs}
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 border border-stone-250 hover:bg-stone-50 text-stone-700 bg-white font-extrabold rounded-xl text-xs transition duration-150 shadow-3xs cursor-pointer"
+              >
+                <RefreshCw size={12} className={isLoadingLogs ? 'animate-spin' : ''} />
+                <span>Segarkan</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="overflow-x-auto">
+            {isLoadingLogs ? (
+              <div className="py-20 text-center text-stone-400 flex flex-col items-center justify-center gap-3">
+                <RefreshCw size={32} className="animate-spin text-[#917118]" />
+                <span className="text-xs font-bold text-stone-500">Memuat log riwayat aktivitas terbaru...</span>
+              </div>
+            ) : filteredLogs.length > 0 ? (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-stone-50/60 border-b border-stone-200 text-stone-500 font-mono text-[10px] uppercase tracking-wider">
+                    <th className="py-3.5 px-6">Waktu Kejadian (WIB)</th>
+                    <th className="py-3.5 px-6">Pelaku Aktivitas</th>
+                    <th className="py-3.5 px-6">Nama Modul</th>
+                    <th className="py-3.5 px-6">Detail Log Aktivitas</th>
+                    <th className="py-3.5 px-6 text-center">Aksi Cepat</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 text-stone-800 text-xs font-mono">
+                  {filteredLogs.map((log) => {
+                    // Look up submission object to allow clicking "View" directly
+                    const affiliateSub = submissions.find(s => s.id === log.submissionId || (s.kode && log.submissionCode && s.kode === log.submissionCode));
+                    
+                    const logDate = new Date(log.timestamp);
+                    const isToday = new Date().toDateString() === logDate.toDateString();
+                    
+                    let timeStr = logDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    let fullDateStr = isToday 
+                      ? `Hari ini, ${timeStr}`
+                      : `${formatDateIndonesian(log.timestamp.split('T')[0])} ${timeStr}`;
+
+                    // Category colors
+                    let catStyle = "bg-stone-100 text-stone-700 border-stone-200";
+                    if (log.category === 'success') {
+                      catStyle = "bg-emerald-50 text-emerald-800 border-emerald-150";
+                    } else if (log.category === 'warning') {
+                      catStyle = "bg-rose-50 text-rose-800 border-rose-150";
+                    } else if (log.category === 'info') {
+                      catStyle = "bg-sky-50 text-sky-800 border-sky-150";
+                    }
+
+                    return (
+                      <tr key={log.id} className="hover:bg-stone-50/40 transition">
+                        {/* Event Time */}
+                        <td className="py-3.5 px-6 whitespace-nowrap">
+                          <span className="text-[11px] text-stone-500 font-mono">{fullDateStr}</span>
+                        </td>
+
+                        {/* User identity */}
+                        <td className="py-3.5 px-6">
+                          <div className="flex items-center gap-2">
+                            <div className="h-6 w-6 rounded-full bg-stone-200 text-stone-600 flex items-center justify-center font-bold text-[10px] uppercase select-none font-sans shrink-0">
+                              {log.userName ? log.userName.charAt(0) : 'S'}
+                            </div>
+                            <div className="font-sans">
+                              <div className="font-bold text-stone-800 text-xs">{log.userName || 'Sistem'}</div>
+                              <div className="text-[10px] text-stone-400 font-mono leading-none">{log.userEmail || 'system_ledger'}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Action Badge */}
+                        <td className="py-3.5 px-6 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 border text-[10px] font-mono font-black rounded-lg ${catStyle}`}>
+                            {log.action.toUpperCase()}
+                          </span>
+                        </td>
+
+                        {/* Audit Assertion details */}
+                        <td className="py-3.5 px-6">
+                          <p className="max-w-md break-all sm:break-normal text-stone-700 leading-normal font-sans text-xs">{log.details}</p>
+                        </td>
+
+                        {/* Actions link to submission */}
+                        <td className="py-3.5 px-6 whitespace-nowrap text-center font-sans">
+                          {affiliateSub ? (
+                            <button
+                              onClick={() => {
+                                onSelect(affiliateSub);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-stone-900 border border-stone-800 text-white hover:bg-stone-800 font-extrabold rounded-lg transition duration-150 text-[10px] cursor-pointer shadow-3xs"
+                              title="Buka / Cetak voucher transaksi yang sah"
+                            >
+                              <Eye size={11} className="text-[#D4AF37]" />
+                              <span>Lihat Voucher</span>
+                            </button>
+                          ) : log.submissionCode ? (
+                            <span className="text-[10px] text-stone-400 font-mono">ID: {log.submissionCode}</span>
+                          ) : (
+                            <span className="text-[10px] text-stone-300">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="py-20 text-center text-stone-400 text-xs">
+                Belum terdaftar riwayat ataupun asersi kejadian dalam sistem log riwayat aktivitas.
+              </div>
+            )}
           </div>
         </div>
       )}

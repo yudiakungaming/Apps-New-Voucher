@@ -23,7 +23,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth';
-import { Submission, SubmissionItem } from './types';
+import { Submission, SubmissionItem, ActivityLog } from './types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -848,6 +848,105 @@ export const deleteSubmissionFromFirestore = async (id: string): Promise<void> =
     console.log(`☁️ Submission ${id} deleted from Firestore.`);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `${path}/${id}`);
+  }
+};
+
+// Fetch activity logs from Firestore (or fallback to local if disconnected)
+export const loadActivityLogsFromFirestore = async (companyId?: string): Promise<ActivityLog[]> => {
+  if (!isFirebaseConfigured() || !firestoreDb) {
+    // If not configured, load from localStorage
+    try {
+      const stored = localStorage.getItem('NUSANTARA_ACTIVITY_LOGS');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  const path = 'activity_logs';
+  try {
+    const q = query(collection(firestoreDb, path), orderBy('timestamp', 'desc'));
+    const snapshot = await getDocs(q);
+    const list: ActivityLog[] = [];
+    
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      list.push({
+        id: docSnap.id,
+        timestamp: data.timestamp || new Date().toISOString(),
+        userId: data.userId || '',
+        userEmail: data.userEmail || '',
+        userName: data.userName || '',
+        action: data.action || '',
+        details: data.details || '',
+        submissionId: data.submissionId || '',
+        submissionCode: data.submissionCode || '',
+        category: data.category || 'info'
+      });
+    });
+    
+    // Cache Firestore logs locally too
+    localStorage.setItem('NUSANTARA_ACTIVITY_LOGS', JSON.stringify(list));
+    return list;
+  } catch (error) {
+    console.warn('Silent read logs rejection - failed to fetch logs from Firestore:', error);
+    try {
+      const stored = localStorage.getItem('NUSANTARA_ACTIVITY_LOGS');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }
+};
+
+// Push a single activity log to Firestore and local cache
+export const saveActivityLogToFirestore = async (
+  action: string,
+  details: string,
+  category: 'info' | 'success' | 'warning' = 'info',
+  submissionId?: string,
+  submissionCode?: string,
+  userProfile?: any
+): Promise<void> => {
+  const logId = `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+  const timestamp = new Date().toISOString();
+  
+  const activeUser = currentUser;
+  const userId = activeUser?.uid || 'anonymous';
+  const userEmail = activeUser?.email || 'offline_user';
+  const userName = userProfile?.fullName || activeUser?.email?.split('@')[0] || 'Sistem';
+
+  const logPayload: ActivityLog = {
+    id: logId,
+    timestamp,
+    userId,
+    userEmail,
+    userName,
+    action,
+    details,
+    category,
+    submissionId: submissionId || '',
+    submissionCode: submissionCode || ''
+  };
+
+  // 1. Cache to local storage list first
+  try {
+    const stored = localStorage.getItem('NUSANTARA_ACTIVITY_LOGS');
+    const list: ActivityLog[] = stored ? JSON.parse(stored) : [];
+    const updatedList = [logPayload, ...list].slice(0, 500); // limit to latest 500 logs to prevent overflow
+    localStorage.setItem('NUSANTARA_ACTIVITY_LOGS', JSON.stringify(updatedList));
+  } catch (e) {
+    console.warn('Failed to save log to localStorage:', e);
+  }
+
+  // 2. Write to Firestore if connected
+  if (isFirebaseConfigured() && firestoreDb) {
+    const path = 'activity_logs';
+    try {
+      await setDoc(doc(firestoreDb, path, logId), logPayload);
+    } catch (err) {
+      console.warn('Silent write logs rejection - failed to save log to Firestore:', err);
+    }
   }
 };
 

@@ -33,6 +33,8 @@ export interface RenderedPage {
   pageNumber: number;
   dataUrl: string;
   isLandscape?: boolean;
+  isPlaceholder?: boolean;
+  errorReason?: string;
 }
 
 const loadPdfJs = (): Promise<any> => {
@@ -377,26 +379,107 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             continue;
           }
 
-          const isPdf = /\.pdf/i.test(file.name || '') || file.url.includes('.pdf');
-
-          // Download file content via public export or auth media
-          let fileBlob: Blob | null = null;
           try {
-            const headers: HeadersInit = {};
-            if (token) {
-              headers['Authorization'] = `Bearer ${token}`;
+            const isPdf = /\.pdf/i.test(file.name || '') || file.url.includes('.pdf');
+
+            // Download file content via public export or auth media
+            let fileBlob: Blob | null = null;
+            try {
+              const headers: HeadersInit = {};
+              if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+              }
+              const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers });
+              if (!fileRes.ok) {
+                throw new Error(`HTTP ${fileRes.status}`);
+              }
+              fileBlob = await fileRes.blob();
+            } catch (fetchErr: any) {
+              console.warn('Gagal mengunduh menggunakan token, mencoba unduhan publik langsung:', fetchErr);
+              if (!isPdf) {
+                // Non-PDF files (images) do not need CORS-compliant binary blobs!
+                // We can render them directly using the Google Drive direct uc export view URL inside img tags
+                const dataUrl = `https://docs.google.com/uc?export=view&id=${fileId}`;
+                let isLandscape = false;
+                try {
+                  const img = new Image();
+                  img.src = dataUrl;
+                  await new Promise((resolve) => {
+                    img.onload = () => {
+                      isLandscape = img.width > img.height;
+                      resolve(null);
+                    };
+                    img.onerror = () => resolve(null);
+                  });
+                } catch (e) {
+                  console.warn('Failed to parse fallback image orientation, defaulting to portrait', e);
+                }
+
+                tempPages.push({
+                  id: `${fileId}-fallback-img`,
+                  fileName: file.name,
+                  fileIndex: i,
+                  pageNumber: 1,
+                  dataUrl,
+                  isLandscape
+                });
+                continue;
+              }
+              // Fallback to docs.google.com direct download helper
+              try {
+                const publicRes = await fetch(`https://docs.google.com/uc?export=download&id=${fileId}`);
+                if (!publicRes.ok) {
+                  throw new Error('Gagal mengunduh file dari Google Drive. Pastikan berkas dapat diakses publik atau hubungkan ulang akun Google Drive.');
+                }
+                fileBlob = await publicRes.blob();
+              } catch (pdfFallbackErr) {
+                throw new Error(`Gagal mengunduh dokumen PDF dari Google Drive. Sesi koneksi Anda kemungkinan telah kedaluwarsa atau berkas tidak diatur publik.`);
+              }
             }
-            const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers });
-            if (!fileRes.ok) {
-              throw new Error(`HTTP ${fileRes.status}`);
-            }
-            fileBlob = await fileRes.blob();
-          } catch (fetchErr: any) {
-            console.warn('Gagal mengunduh menggunakan token, mencoba unduhan publik langsung:', fetchErr);
-            if (!isPdf) {
-              // Non-PDF files (images) do not need CORS-compliant binary blobs!
-              // We can render them directly using the Google Drive direct uc export view URL inside img tags
-              const dataUrl = `https://docs.google.com/uc?export=view&id=${fileId}`;
+
+            if (isPdf && fileBlob) {
+              if (isMounted) {
+                setLoadingProgress(`Membaca dokumen PDF ${file.name}...`);
+              }
+              const pdfjsLib = await loadPdfJs();
+              const arrayBuffer = await fileBlob.arrayBuffer();
+              const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+              for (let pNum = 1; pNum <= pdf.numPages; pNum++) {
+                if (isMounted) {
+                  setLoadingProgress(`Merender PDF ${file.name} - Halaman ${pNum} dari ${pdf.numPages}...`);
+                }
+                const page = await pdf.getPage(pNum);
+                // Scale to 2.2 for high-definition print resolution which preserves micro-text readability
+                const viewport = page.getViewport({ scale: 2.2 });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                if (!context) continue;
+
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                await page.render({
+                  canvasContext: context,
+                  viewport: viewport
+                }).promise;
+
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                const isLandscape = viewport.width > viewport.height;
+                tempPages.push({
+                  id: `${fileId}-p${pNum}`,
+                  fileName: file.name,
+                  fileIndex: i,
+                  pageNumber: pNum,
+                  dataUrl,
+                  isLandscape
+                });
+              }
+            } else if (fileBlob) {
+              // Treat as single-page image
+              const dataUrl = URL.createObjectURL(fileBlob);
+              
+              // Asynchronously load the image to determine its orientation (portrait or landscape)
               let isLandscape = false;
               try {
                 const img = new Image();
@@ -409,96 +492,29 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                   img.onerror = () => resolve(null);
                 });
               } catch (e) {
-                console.warn('Failed to parse fallback image orientation, defaulting to portrait', e);
+                console.warn('Failed to parse image orientation, defaulting to portrait', e);
               }
 
               tempPages.push({
-                id: `${fileId}-fallback-img`,
+                id: `${fileId}-img`,
                 fileName: file.name,
                 fileIndex: i,
                 pageNumber: 1,
                 dataUrl,
                 isLandscape
               });
-              continue;
             }
-            // Fallback to docs.google.com direct download helper
-            try {
-              const publicRes = await fetch(`https://docs.google.com/uc?export=download&id=${fileId}`);
-              if (!publicRes.ok) {
-                throw new Error('Gagal mengunduh file dari Google Drive. Pastikan berkas dapat diakses publik atau hubungkan ulang akun Google Drive.');
-              }
-              fileBlob = await publicRes.blob();
-            } catch (pdfFallbackErr) {
-              throw new Error(`Gagal mengunduh dokumen PDF dari Google Drive. Sesi koneksi Anda kemungkinan telah kedaluwarsa atau berkas tidak diatur publik.`);
-            }
-          }
-
-          if (isPdf && fileBlob) {
-            if (isMounted) {
-              setLoadingProgress(`Membaca dokumen PDF ${file.name}...`);
-            }
-            const pdfjsLib = await loadPdfJs();
-            const arrayBuffer = await fileBlob.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-            for (let pNum = 1; pNum <= pdf.numPages; pNum++) {
-              if (isMounted) {
-                setLoadingProgress(`Merender PDF ${file.name} - Halaman ${pNum} dari ${pdf.numPages}...`);
-              }
-              const page = await pdf.getPage(pNum);
-              // Scale to 2.2 for high-definition print resolution which preserves micro-text readability
-              const viewport = page.getViewport({ scale: 2.2 });
-              const canvas = document.createElement('canvas');
-              const context = canvas.getContext('2d');
-              if (!context) continue;
-
-              canvas.height = viewport.height;
-              canvas.width = viewport.width;
-
-              await page.render({
-                canvasContext: context,
-                viewport: viewport
-              }).promise;
-
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-              const isLandscape = viewport.width > viewport.height;
-              tempPages.push({
-                id: `${fileId}-p${pNum}`,
-                fileName: file.name,
-                fileIndex: i,
-                pageNumber: pNum,
-                dataUrl,
-                isLandscape
-              });
-            }
-          } else if (fileBlob) {
-            // Treat as single-page image
-            const dataUrl = URL.createObjectURL(fileBlob);
-            
-            // Asynchronously load the image to determine its orientation (portrait or landscape)
-            let isLandscape = false;
-            try {
-              const img = new Image();
-              img.src = dataUrl;
-              await new Promise((resolve) => {
-                img.onload = () => {
-                  isLandscape = img.width > img.height;
-                  resolve(null);
-                };
-                img.onerror = () => resolve(null);
-              });
-            } catch (e) {
-              console.warn('Failed to parse image orientation, defaulting to portrait', e);
-            }
-
+          } catch (fileErr: any) {
+            console.warn(`Error rendering individual attachment ${file.name}:`, fileErr);
             tempPages.push({
-              id: `${fileId}-img`,
+              id: `${fileId}-placeholder-error`,
               fileName: file.name,
               fileIndex: i,
               pageNumber: 1,
-              dataUrl,
-              isLandscape
+              dataUrl: '',
+              isLandscape: false,
+              isPlaceholder: true,
+              errorReason: fileErr.message || String(fileErr)
             });
           }
         }
@@ -1028,12 +1044,34 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                     : 'w-[210mm] min-h-[297mm] h-[297mm] print-portrait'
                 }`}
               >
-                {/* Visualizer Image matching exactly the PDF pages layout as requested */}
-                <img
-                  src={page.dataUrl}
-                  alt={page.fileName}
-                  className="max-w-full max-h-full object-contain"
-                />
+                {page.isPlaceholder ? (
+                  <div className="flex flex-col items-center justify-center text-center p-8 max-w-xl">
+                    <Cloud className="text-amber-500 w-16 h-16 mb-4 animate-pulse" />
+                    <h4 className="text-base font-bold text-stone-800 uppercase tracking-wide mb-1">
+                      Lampiran Dokumen: {fileLabel}
+                    </h4>
+                    <p className="text-xs text-stone-500 font-mono mb-4 break-all">
+                      {page.fileName}
+                    </p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left space-y-2 max-w-md shadow-3xs">
+                      <p className="text-xs text-amber-900 font-bold leading-relaxed">
+                        ⚠️ Berkas Tersimpan di Google Drive Akun Lain / Mengalami Kendala Akses
+                      </p>
+                      <p className="text-[11px] text-amber-800 leading-relaxed">
+                        Akun Google Drive aktif Anda saat ini tidak memiliki hak akses langsung ke file ID dokumen dari pengunggah asal.
+                      </p>
+                      <p className="text-[11px] text-amber-800 leading-relaxed font-medium pt-1 border-t border-amber-200">
+                        Solusi Mudah: Klik tombol <span className="bg-amber-605 text-white px-1 py-0.5 rounded font-mono font-bold font-sans text-[10px]">Salin ke Drive Saya</span> pada panel kanan atas layar ini untuk menyimpan salinan berkas ini di akun Google Drive Anda agar dapat ditampilkan dan dicetak otomatis.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <img
+                    src={page.dataUrl}
+                    alt={page.fileName}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                )}
 
                 {/* Floating screen-only badge to maintain complete page counts */}
                 <div className="absolute top-4 right-4 bg-stone-900/85 text-white font-mono text-[9px] px-2.5 py-1 rounded-md shadow-md flex items-center gap-1.5 select-none print:hidden z-10">

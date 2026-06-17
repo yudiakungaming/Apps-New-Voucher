@@ -42,6 +42,19 @@ export interface Submission {
   createdAt: string;
 }
 
+export interface ActivityLog {
+  id: string;
+  timestamp: string; // ISO String
+  userId: string;
+  userEmail: string;
+  userName: string;
+  action: string; // 'create_submission' | 'update_submission' | 'delete_submission' | 'pay_submission' | 'import_sheets' | 'copy_drive_file'
+  details: string; // Detailed description of action
+  submissionId?: string;
+  submissionCode?: string;
+  category: 'info' | 'success' | 'warning';
+}
+
 export const REQUIRED_TRANSACTION_DOCS = [
   { key: 'po', label: 'PO', fullName: 'PO (Purchase Order)' },
   { key: 'lhv', label: 'LHV', fullName: 'LHV (Laporan Hasil Verifikasi)' },

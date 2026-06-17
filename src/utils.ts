@@ -415,19 +415,111 @@ function terbilangHelper(nominal: number): string {
   return '';
 }
 
+export async function compressImage(
+  imageBytes: Uint8Array,
+  mimeType: string,
+  maxWidthOrHeight: number = 1000,
+  quality: number = 0.70
+): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  // If it's not a common web image, return unchanged
+  if (!mimeType.startsWith('image/') || mimeType.includes('gif')) {
+    return { bytes: imageBytes, mimeType };
+  }
+
+  return new Promise((resolve) => {
+    try {
+      const blob = new Blob([imageBytes], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        
+        // Calculate new dimensions preserving aspect ratio
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > maxWidthOrHeight || height > maxWidthOrHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidthOrHeight) / width);
+            width = maxWidthOrHeight;
+          } else {
+            width = Math.round((width * maxWidthOrHeight) / height);
+            height = maxWidthOrHeight;
+          }
+        }
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          console.warn('Could not get 2D context for canvas compression');
+          resolve({ bytes: imageBytes, mimeType });
+          return;
+        }
+        
+        // Fill white background (useful for transparent PNG conversion to JPG)
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Draw image
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to highly compact JPEG format
+        const outputMime = 'image/jpeg';
+        const dataUrl = canvas.toDataURL(outputMime, quality);
+        const base64Str = dataUrl.split(',')[1];
+        const binaryStr = window.atob(base64Str);
+        const outBytes = new Uint8Array(binaryStr.length);
+        
+        for (let i = 0; i < binaryStr.length; i++) {
+          outBytes[i] = binaryStr.charCodeAt(i);
+        }
+        
+        console.log(`[Image Compression] Standardised & compressed image: ${(imageBytes.length / 1024).toFixed(1)} KB -> ${(outBytes.length / 1024).toFixed(1)} KB`);
+        resolve({ bytes: outBytes, mimeType: outputMime });
+      };
+      
+      img.onerror = (err) => {
+        console.warn('Failed to load image for compression fallback:', err);
+        URL.revokeObjectURL(url);
+        resolve({ bytes: imageBytes, mimeType });
+      };
+      
+      img.src = url;
+    } catch (e) {
+      console.warn('Error during image compress execution:', e);
+      resolve({ bytes: imageBytes, mimeType });
+    }
+  });
+}
+
 export async function convertImageToPdf(imageBytes: Uint8Array, mimeType: string): Promise<Uint8Array> {
+  // Perform automatic compression and standardization
+  let processedBytes = imageBytes;
+  let processedMime = mimeType;
+  try {
+    const compressed = await compressImage(imageBytes, mimeType, 1200, 0.7);
+    processedBytes = compressed.bytes;
+    processedMime = compressed.mimeType;
+  } catch (err) {
+    console.warn('Failed image compression step inside pdf converter:', err);
+  }
+
   const pdfDoc = await PDFDocument.create();
   let image;
   try {
-    if (mimeType === 'image/png' || mimeType.includes('png')) {
-      image = await pdfDoc.embedPng(imageBytes);
+    if (processedMime === 'image/png' || processedMime.includes('png')) {
+      image = await pdfDoc.embedPng(processedBytes);
     } else {
-      image = await pdfDoc.embedJpg(imageBytes);
+      image = await pdfDoc.embedJpg(processedBytes);
     }
   } catch (err) {
     console.warn('Failed to embed image in PDF directly, attempting to embed as JPEG anyway:', err);
     try {
-      image = await pdfDoc.embedJpg(imageBytes);
+      image = await pdfDoc.embedJpg(processedBytes);
     } catch (e2) {
       throw new Error('Format gambar tidak didukung atau rusak.');
     }

@@ -7,10 +7,11 @@ import {
   googleDriveLogin,
   getStoredGoogleDriveToken,
   setGoogleDriveToken,
-  getConnectedDrives
+  getConnectedDrives,
+  saveActivityLogToFirestore
 } from '../firebase';
 import { DriveAccountsManager } from './DriveAccountsManager';
-import { formatRupiah, formatDateIndonesian, convertImageToPdf } from '../utils';
+import { formatRupiah, formatDateIndonesian, convertImageToPdf, compressImage } from '../utils';
 import { 
   ArrowLeft, 
   UploadCloud, 
@@ -342,27 +343,75 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
     }
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorText('File terlalu besar. Batas ukuran maksimal lampiran bukti bayar adalah 5 MB.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64Data = e.target?.result as string;
-      if (base64Data) {
-        setUploadedFile({
-          name: file.name,
-          base64: base64Data,
-          fileObject: file
-        });
-        setErrorText('');
+    setErrorText('');
+    
+    try {
+      const mimeType = file.type || '';
+      const isImage = mimeType.startsWith('image/') || /\.jpe?g|\.png/i.test(file.name);
+      
+      if (isImage) {
+        setIsLoading(true);
+        setSaveProgress('Mengompresi gambar bukti transfer secara otomatis...');
+        
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        
+        const compressed = await compressImage(bytes, mimeType, 1200, 0.7);
+        
+        // Convert back to compressed File object
+        const blob = new Blob([compressed.bytes], { type: compressed.mimeType });
+        const compressedFile = new File([blob], file.name, { type: compressed.mimeType });
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64Data = e.target?.result as string;
+          if (base64Data) {
+            setUploadedFile({
+              name: compressedFile.name,
+              base64: base64Data,
+              fileObject: compressedFile
+            });
+            setErrorText('');
+          }
+          setIsLoading(false);
+          setSaveProgress('');
+        };
+        reader.onerror = () => {
+          setErrorText('Gagal membaca file hasil kompresi.');
+          setIsLoading(false);
+          setSaveProgress('');
+        };
+        reader.readAsDataURL(compressedFile);
+      } else {
+        // Standard non-image file path (e.g. PDF) or when compression skipped
+        if (file.size > 10 * 1024 * 1024) {
+          setErrorText('File terlalu besar. Batas ukuran maksimal dokumen PDF adalah 10 MB.');
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64Data = e.target?.result as string;
+          if (base64Data) {
+            setUploadedFile({
+              name: file.name,
+              base64: base64Data,
+              fileObject: file
+            });
+            setErrorText('');
+          }
+        };
+        reader.readAsDataURL(file);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('File treatment/compression failure:', err);
+      setErrorText('Terjadi kesalahan saat memproses file bukti transfer.');
+      setIsLoading(false);
+      setSaveProgress('');
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -597,6 +646,20 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
         localStorage.setItem('NUSANTARA_HO_SUBMISSIONS', JSON.stringify(nextList));
       } catch (localSaveErr) {
         console.warn('LocalStorage save failure:', localSaveErr);
+      }
+
+      // Log the event for the Audit log
+      try {
+        const totalVal = selectedSubmission.items.reduce((sum, item) => sum + item.total, 0);
+        await saveActivityLogToFirestore(
+          'pay_submission',
+          `Mengunggah bukti transfer untuk voucher ${selectedSubmission.kode} kepada ${selectedSubmission.dibayarkanKepada} senilai Rp ${formatRupiah(totalVal)}. Status transaksi diubah menjadi Lunas.`,
+          'success',
+          selectedSubmission.id,
+          selectedSubmission.kode
+        );
+      } catch (logErr) {
+        console.warn('Gagal mencatat log aktivitas:', logErr);
       }
 
       setSuccessCode(selectedSubmission.kode || 'BKK-VOUCHER');

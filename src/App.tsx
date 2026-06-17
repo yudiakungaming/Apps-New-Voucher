@@ -19,7 +19,8 @@ import {
   getUserProfileFromFirestore,
   loadSubmissionsFromFirestore,
   getCompanyProfileFromFirestore,
-  logoutFromFirebase
+  logoutFromFirebase,
+  saveActivityLogToFirestore
 } from './firebase';
 import { Database, FileText, CheckSquare, ShieldCheck, Heart, Cloud } from 'lucide-react';
 
@@ -209,6 +210,7 @@ export default function App() {
 
   // Delete handler
   const handleDelete = async (id: string) => {
+    const targetSub = submissions.find(s => s.id === id);
     const updated = submissions.filter((sub) => sub.id !== id);
     saveSubmissionsToStorage(updated);
     
@@ -217,6 +219,22 @@ export default function App() {
         await deleteSubmissionFromFirestore(id);
       } catch (err) {
         console.warn('Silent fallback: cloud delete rejected', err);
+      }
+    }
+
+    if (targetSub) {
+      try {
+        const totalVal = targetSub.items.reduce((sum, item) => sum + item.total, 0);
+        await saveActivityLogToFirestore(
+          'delete_submission',
+          `Menghapus voucher ${targetSub.kode} milik ${targetSub.dibayarkanKepada} senilai Rp ${totalVal.toLocaleString('id-ID')}.`,
+          'warning',
+          id,
+          targetSub.kode,
+          userProfile
+        );
+      } catch (logErr) {
+        console.warn('Gagal mencatat log hapus:', logErr);
       }
     }
 
@@ -259,6 +277,20 @@ export default function App() {
         console.warn('Silent fallback: cloud replicate rejected', err);
       }
     }
+
+    try {
+      const totalVal = dupe.items.reduce((sum, item) => sum + item.total, 0);
+      await saveActivityLogToFirestore(
+        'update_submission',
+        `Menduplikasi voucher lama ${orig.kode} menjadi voucher baru ${dupe.kode} untuk ${dupe.dibayarkanKepada} senilai Rp ${totalVal.toLocaleString('id-ID')}.`,
+        'info',
+        dupe.id,
+        dupe.kode,
+        userProfile
+      );
+    } catch (logErr) {
+      console.warn('Gagal mencatat log duplikasi:', logErr);
+    }
   };
 
   // Save/Update from form submission
@@ -289,6 +321,22 @@ export default function App() {
           `2. Periksa apakah masa aktif aturan test-mode 30 hari Anda telah kedaluwarsa.`
         );
       }
+    }
+
+    try {
+      const totalVal = savedSub.items.reduce((sum, item) => sum + item.total, 0);
+      await saveActivityLogToFirestore(
+        exists ? 'update_submission' : 'create_submission',
+        exists 
+          ? `Memperbarui rincian voucher ${savedSub.kode} untuk ${savedSub.dibayarkanKepada} senilai Rp ${totalVal.toLocaleString('id-ID')}.`
+          : `Membuat voucher baru dengan kode ${savedSub.kode} untuk ${savedSub.dibayarkanKepada} senilai Rp ${totalVal.toLocaleString('id-ID')}.`,
+        exists ? 'info' : 'success',
+        savedSub.id,
+        savedSub.kode,
+        userProfile
+      );
+    } catch (logErr) {
+      console.warn('Gagal mencatat log penyimpanan:', logErr);
     }
 
     setEditingSubmission(null);
