@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Submission, ActivityLog } from '../types';
 import { formatRupiah, formatDateIndonesian } from '../utils';
-import { Search, Eye, Edit2, Trash2, Calendar, MapPin, DollarSign, Plus, Copy, RefreshCw, Cloud, FileText, Database, History } from 'lucide-react';
+import { Search, Eye, Edit2, Trash2, Calendar, MapPin, DollarSign, Plus, Copy, RefreshCw, Cloud, FileText, Database, History, FileSpreadsheet, CheckCircle, AlertCircle, Printer, Check, ExternalLink } from 'lucide-react';
 import { loadActivityLogsFromFirestore } from '../firebase';
 
 interface SubmissionsListProps {
@@ -28,9 +28,15 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [jenisFilter, setJenisFilter] = useState<string>('');
   
-  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs'>('standard');
+  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs' | 'invoice_recap'>('standard');
   const [activeSheetTab, setActiveSheetTab] = useState<string>('Data Sinkron');
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  // States for Invoice Recap view
+  const [invoiceMonthFilter, setInvoiceMonthFilter] = useState<string>('All');
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState<string>('');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<string>('All');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -165,6 +171,135 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
     return { tunai, transfer };
   }, [filteredSubmissions]);
 
+  // Invoice calculations and groupings
+  const invoiceSubmissions = useMemo(() => {
+    return submissions.filter(sub => {
+      const hasInvoiceTag = !!sub.isInvoice;
+      const hasInvoiceFile = !!sub.googleDriveFiles?.some(
+        f => f.docType === 'invoice_vendor' || 
+             (f.name || '').toLowerCase().includes('invoice') || 
+             (f.name || '').toLowerCase().includes('tagihan')
+      );
+      const isInvoiceNote = (sub.notes || '').toLowerCase().includes('invoice') || 
+                            (sub.notes || '').toLowerCase().includes('tagihan') || 
+                            (sub.notes || '').toLowerCase().includes('inv/');
+      const isInvoiceItem = sub.items?.some(i => 
+        (i.item || '').toLowerCase().includes('invoice') || 
+        (i.keterangan || '').toLowerCase().includes('invoice')
+      );
+      
+      return hasInvoiceTag || hasInvoiceFile || isInvoiceNote || isInvoiceItem;
+    });
+  }, [submissions]);
+
+  // Dynamic invoice month list
+  const availableInvoiceMonths = useMemo(() => {
+    const months = new Set<string>();
+    invoiceSubmissions.forEach(sub => {
+      if (sub.tanggal) {
+        const parts = sub.tanggal.split('-');
+        if (parts.length >= 2) {
+          months.add(`${parts[0]}-${parts[1]}`); // formats "YYYY-MM"
+        }
+      }
+    });
+    return Array.from(months).sort((a, b) => b.localeCompare(a)); // Latest first
+  }, [invoiceSubmissions]);
+
+  // Invoice list after active filters applied
+  const filteredInvoiceSubmissions = useMemo(() => {
+    return invoiceSubmissions.filter(sub => {
+      // 1. Month Filter
+      if (invoiceMonthFilter !== 'All') {
+        const parts = sub.tanggal.split('-');
+        const subMonth = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : '';
+        if (subMonth !== invoiceMonthFilter) return false;
+      }
+
+      // 2. Status Filter
+      if (invoiceStatusFilter !== 'All') {
+        const subSum = sub.items.reduce((s, i) => s + (i.total || 0), 0);
+        const subStatus = sub.buktiPembayaran || sub.googleDriveFiles?.some(f => f.isBuktiPembayaran) ? 'Lunas' : 'Belum Lunas';
+        if (subStatus !== invoiceStatusFilter) return false;
+      }
+
+      // 3. Search Query
+      if (invoiceSearchQuery.trim()) {
+        const q = invoiceSearchQuery.toLowerCase();
+        const matchesKode = (sub.kode || '').toLowerCase().includes(q);
+        const matchesPenerima = (sub.dibayarkanKepada || '').toLowerCase().includes(q);
+        const matchesNoInv = (sub.invoiceNumber || '').toLowerCase().includes(q) || 
+                             (sub.notes || '').toLowerCase().includes(q) ||
+                             sub.items?.some(i => (i.item || '').toLowerCase().includes(q) || (i.keterangan || '').toLowerCase().includes(q));
+        const matchesJenis = (sub.jenisPengajuan || '').toLowerCase().includes(q);
+        
+        if (!matchesKode && !matchesPenerima && !matchesNoInv && !matchesJenis) return false;
+      }
+
+      return true;
+    });
+  }, [invoiceSubmissions, invoiceMonthFilter, invoiceStatusFilter, invoiceSearchQuery]);
+
+  // Combined stats for chosen month/filters
+  const invoiceRecapStats = useMemo(() => {
+    let totalNominal = 0;
+    let totalLunas = 0;
+    let totalBelumLunas = 0;
+
+    filteredInvoiceSubmissions.forEach(sub => {
+      const grandTotal = sub.items.reduce((s, i) => s + (i.total || 0), 0);
+      const isLunas = sub.buktiPembayaran || sub.googleDriveFiles?.some(f => f.isBuktiPembayaran);
+      
+      const invoiceAmt = typeof sub.invoiceAmount === 'number' ? sub.invoiceAmount : grandTotal;
+      totalNominal += invoiceAmt;
+
+      if (isLunas) {
+        totalLunas++;
+      } else {
+        totalBelumLunas++;
+      }
+    });
+
+    return {
+      count: filteredInvoiceSubmissions.length,
+      totalNominal,
+      totalLunas,
+      totalBelumLunas
+    };
+  }, [filteredInvoiceSubmissions]);
+
+  // Month-by-month grid matrix
+  const invoiceMonthlyGrid = useMemo(() => {
+    const monthsMap: { [key: string]: { count: number; total: number; lunas: number; belumLunas: number } } = {};
+    
+    invoiceSubmissions.forEach(sub => {
+      if (!sub.tanggal) return;
+      const parts = sub.tanggal.split('-');
+      if (parts.length < 2) return;
+      const mKey = `${parts[0]}-${parts[1]}`;
+
+      const grandTotal = sub.items.reduce((s, i) => s + (i.total || 0), 0);
+      const invoiceAmt = typeof sub.invoiceAmount === 'number' ? sub.invoiceAmount : grandTotal;
+      const isLunas = sub.buktiPembayaran || sub.googleDriveFiles?.some(f => f.isBuktiPembayaran);
+
+      if (!monthsMap[mKey]) {
+        monthsMap[mKey] = { count: 0, total: 0, lunas: 0, belumLunas: 0 };
+      }
+
+      monthsMap[mKey].count += 1;
+      monthsMap[mKey].total += invoiceAmt;
+      if (isLunas) {
+        monthsMap[mKey].lunas += 1;
+      } else {
+        monthsMap[mKey].belumLunas += 1;
+      }
+    });
+
+    return Object.entries(monthsMap)
+      .map(([month, data]) => ({ month, ...data }))
+      .sort((a, b) => b.month.localeCompare(a.month)); // Sort descending
+  }, [invoiceSubmissions]);
+
   return (
     <div className="space-y-6">
       {/* Dynamic View Layout Switcher Bar */}
@@ -207,6 +342,18 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
           >
             <History size={13} className={layoutMode === 'audit_logs' ? 'text-white' : ''} />
             <span>Riwayat Audit</span>
+          </button>
+
+          <button
+            onClick={() => setLayoutMode('invoice_recap')}
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
+              layoutMode === 'invoice_recap'
+                ? 'bg-amber-600 text-white shadow-sm font-extrabold font-display'
+                : 'bg-transparent text-stone-500 hover:text-amber-700 hover:bg-stone-150/40'
+            }`}
+          >
+            <FileSpreadsheet size={13} className={layoutMode === 'invoice_recap' ? 'text-white' : ''} />
+            <span>Rekap & Bukti Invoice</span>
           </button>
         </div>
         
@@ -890,6 +1037,494 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
               </div>
             </div>
           </div>
+        </div>
+      ) : layoutMode === 'invoice_recap' ? (
+        /* Rekapitulasi & Pembayaran Invoice Bulanan View */
+        <div className="space-y-6">
+          
+          {/* Header Dashboard section */}
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in print:hidden">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="p-2.5 bg-amber-50 rounded-xl text-amber-700">
+                  <FileSpreadsheet size={22} />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-stone-900 tracking-tight font-display uppercase">Pusat Rekapitulasi Pembayaran Invoice</h2>
+                  <p className="text-xs text-stone-500">Menganalisis, menghitung volume, and mencetak rekapitulasi invoice vendor beserta bukti pembayarannya per bulan.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => {
+                  window.print();
+                }}
+                className="inline-flex items-center gap-2 px-4.5 py-2 hover:bg-stone-100 border border-stone-250 text-stone-800 font-extrabold rounded-xl transition duration-150 text-xs shadow-3xs cursor-pointer select-none"
+                title="Cetak Laporan Rekap Bulanan yang Aktif"
+              >
+                <Printer size={14} className="text-[#a58421]" />
+                <span>Cetak Rekap Laporan</span>
+              </button>
+              
+              <button
+                onClick={onAddNew}
+                className="inline-flex items-center gap-2 px-4.5 py-2 bg-stone-900 hover:bg-stone-800 text-white font-extrabold rounded-xl transition duration-150 text-xs shadow-xs cursor-pointer select-none"
+              >
+                <Plus size={14} className="text-[#D4AF37]" />
+                <span>Input Invoice Baru</span>
+              </button>
+            </div>
+          </div>
+
+          {/* PRINT-ONLY HEADER AND FORMAL REPORT ACCENT - ONLY OUTDOES ON PAPER PRINTING */}
+          <div className="hidden print:block font-sans text-black p-4 space-y-6">
+            <div className="border-b-2 border-stone-900 pb-4 flex justify-between items-end">
+              <div>
+                <h1 className="text-xl font-bold font-display uppercase tracking-wider">PT NUSANTARA MINERAL SUKSES ABADI</h1>
+                <p className="text-xs text-stone-500 font-mono">DIVISI FINANCE & INTERNAL LEDGER DATABASE</p>
+                <h2 className="text-sm font-semibold text-stone-850 mt-1">Laporan Rekapitulasi Transaksi Pembayaran Invoice</h2>
+              </div>
+              <div className="text-right font-mono text-[10px] text-stone-500">
+                <p>Dicetak pada: {new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                <p>Filter Bulan: {invoiceMonthFilter === 'All' ? 'Semua Bulan' : formatDateIndonesian(`${invoiceMonthFilter}-01`).replace('1 ', '')}</p>
+              </div>
+            </div>
+
+            {/* Print KPIs */}
+            <div className="grid grid-cols-3 gap-4 border border-stone-300 p-3 rounded-lg font-mono text-xs">
+              <div>
+                <span className="text-stone-500 uppercase block text-[9px]">Total Transaksi</span>
+                <strong>{invoiceRecapStats.count} Invoice</strong>
+              </div>
+              <div>
+                <span className="text-stone-500 uppercase block text-[9px]">Total Nilai Tagihan</span>
+                <strong>Rp {invoiceRecapStats.totalNominal.toLocaleString('id-ID')}</strong>
+              </div>
+              <div>
+                <span className="text-stone-500 uppercase block text-[9px]">Status Kelayakan</span>
+                <strong>Lunas: {invoiceRecapStats.totalLunas} | Belum Lunas: {invoiceRecapStats.totalBelumLunas}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Metrics Columns (KPIs) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 print:hidden">
+            <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-3xs hover:shadow-2xs transition flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] text-stone-400 font-mono tracking-widest uppercase block">Total Transaksi Invoice</span>
+                <div className="text-2xl font-black text-stone-900 font-display">
+                  {invoiceRecapStats.count} <span className="text-xs font-medium text-stone-500 uppercase tracking-wide">Transaksi</span>
+                </div>
+                <span className="text-[10px] text-stone-400 block block font-mono">Bulan Filter: {invoiceMonthFilter === 'All' ? 'Semua Bulan' : invoiceMonthFilter}</span>
+              </div>
+              <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                <FileText size={20} />
+              </div>
+            </div>
+
+            <div className="bg-stone-900 text-white p-5 rounded-2xl border border-stone-850 shadow-3xs flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] text-stone-400 font-mono tracking-widest uppercase block">Volume Nilai Tagihan</span>
+                <div className="text-2xl font-black text-white font-display">
+                  Rp {invoiceRecapStats.totalNominal.toLocaleString('id-ID')}
+                </div>
+                <span className="text-[10px] text-stone-400 block block font-mono">Total tagihan terakumulasi</span>
+              </div>
+              <div className="p-3 bg-stone-800 rounded-xl text-amber-500 border border-stone-750">
+                <DollarSign size={20} />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-3xs hover:shadow-2xs transition flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] text-stone-400 font-mono tracking-widest uppercase block">Pemberesan & Status</span>
+                <div className="text-base font-black text-stone-800 font-display flex items-center gap-1.5">
+                  <span className="text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-150 font-sans">{invoiceRecapStats.totalLunas} Lunas</span>
+                  <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-150 font-sans">{invoiceRecapStats.totalBelumLunas} Outstanding</span>
+                </div>
+                <p className="text-[10px] text-stone-400 mt-1 block font-mono">Diupdate secara real-time berdasarkan bukti transfer</p>
+              </div>
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                <CheckCircle size={20} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            {/* LEFT COLUMN: MONTH-BY-MONTH STRUCTURED MATRIX CONTAINER */}
+            <div className="lg:col-span-1 space-y-4 print:hidden">
+              <div className="bg-white rounded-2xl border border-stone-200 p-4.5 space-y-3 shadow-3xs">
+                <div>
+                  <h3 className="text-xs font-black uppercase font-mono tracking-wider text-stone-500">Mencatat Rekap Per Bulan</h3>
+                  <p className="text-[10.5px] text-stone-400 mt-0.5">Klik pada bulan di bawah untuk memfilter daftar invoice secara instan.</p>
+                </div>
+
+                <div className="space-y-1.5 pt-1.5 border-t border-stone-150/60">
+                  <button
+                    onClick={() => setInvoiceMonthFilter('All')}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl transition ${
+                      invoiceMonthFilter === 'All'
+                        ? 'bg-amber-600 text-white font-extrabold'
+                        : 'bg-stone-50 text-stone-700 hover:bg-stone-100 hover:text-stone-900 border border-stone-150'
+                    }`}
+                  >
+                    <span>📅 Semua Transaksi</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-200/50 text-stone-800 font-bold font-mono">
+                      {invoiceSubmissions.length}
+                    </span>
+                  </button>
+
+                  {invoiceMonthlyGrid.length > 0 ? (
+                    invoiceMonthlyGrid.map((row) => {
+                      // Format month label "2026-06" to Indonesian e.g. "Juni 2026"
+                      const displayMonth = formatDateIndonesian(`${row.month}-01`).replace('1 ', '');
+                      
+                      return (
+                        <button
+                          key={row.month}
+                          onClick={() => setInvoiceMonthFilter(row.month)}
+                          className={`w-full flex flex-col px-3 py-2 text-xs rounded-xl transition text-left border ${
+                            invoiceMonthFilter === row.month
+                              ? 'bg-stone-900 border-stone-950 text-white shadow-3xs'
+                              : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50 hover:text-stone-900'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold">
+                            <span>{displayMonth}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${invoiceMonthFilter === row.month ? 'bg-amber-500 text-stone-950' : 'bg-stone-100 text-stone-700'}`}>
+                              {row.count} Inv
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px] text-stone-400 mt-1 font-mono">
+                            <span>Tagihan:</span>
+                            <span className={invoiceMonthFilter === row.month ? 'text-amber-400 font-bold' : 'text-stone-800 font-bold'}>
+                              Rp {row.total.toLocaleString('id-ID')}
+                            </span>
+                          </div>
+                          
+                          <div className="flex gap-1.5 mt-1">
+                            <span className="text-[9px] text-emerald-600 font-sans font-semibold">● {row.lunas} Lunas</span>
+                            <span className="text-[9px] text-amber-700 font-sans font-semibold">● {row.belumLunas} Berjalan</span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="py-8 text-center text-[11px] text-stone-400">
+                      Belum terdeteksi data transaksi invoice.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: MAIN INVOICE DETAIL SHEET */}
+            <div className="lg:col-span-3 space-y-4">
+              <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden animate-fade-in print:border-none print:shadow-none">
+                
+                {/* Search & Filter section header */}
+                <div className="px-6 py-4.5 bg-stone-50 border-b border-stone-150 flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+                  <div className="space-y-0.5">
+                    <span className="text-xs uppercase font-mono tracking-widest text-[#a58421] font-bold">Tabel Transaksi Utama</span>
+                    <h3 className="text-sm font-black text-stone-900">Daftar Transaksi Invoice Aktif</h3>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Search Field */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={14} />
+                      <input
+                        type="text"
+                        placeholder="Cari vendor, no invoice, koin..."
+                        className="pl-8 pr-4 py-1.5 w-full sm:w-56 bg-white border border-stone-250 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-700"
+                        value={invoiceSearchQuery}
+                        onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Status filter dropdown */}
+                    <select
+                      className="bg-white border border-stone-250 rounded-xl text-xs py-1.5 px-3 focus:outline-none text-stone-700 font-medium"
+                      value={invoiceStatusFilter}
+                      onChange={(e) => setInvoiceStatusFilter(e.target.value)}
+                    >
+                      <option value="All">Semua Status</option>
+                      <option value="Lunas">Lunas</option>
+                      <option value="Belum Lunas">Belum Lunas</option>
+                    </select>
+
+                    {/* Clear filter if active */}
+                    {(invoiceMonthFilter !== 'All' || invoiceStatusFilter !== 'All' || invoiceSearchQuery.trim()) && (
+                      <button
+                        onClick={() => {
+                          setInvoiceMonthFilter('All');
+                          setInvoiceStatusFilter('All');
+                          setInvoiceSearchQuery('');
+                        }}
+                        className="text-[11px] text-rose-600 hover:text-rose-800 transition font-bold"
+                      >
+                        Reset Filter
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Table details container */}
+                <div className="overflow-x-auto">
+                  {filteredInvoiceSubmissions.length > 0 ? (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-stone-100/85 border-b border-stone-200 text-stone-600 text-[10.5px] uppercase font-mono tracking-wider select-none">
+                          <th className="py-3 px-4 font-bold border-r border-stone-200">Tanggal & Kode</th>
+                          <th className="py-3 px-4 font-bold border-r border-stone-200">Nomor Invoice</th>
+                          <th className="py-3 px-4 font-bold border-r border-stone-200">Vendor / Penerima</th>
+                          <th className="py-3 px-4 font-bold border-r border-stone-200 text-right">Nominal</th>
+                          <th className="py-3 px-4 font-bold border-r border-stone-200 text-center">Bukti Lampiran</th>
+                          <th className="py-3 px-4 font-bold border-r border-stone-200 text-center">Status</th>
+                          <th className="py-3 px-4 font-bold text-center print:hidden">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200/80 font-sans text-xs">
+                        {filteredInvoiceSubmissions.map((sub) => {
+                          const isLunas = sub.buktiPembayaran || sub.googleDriveFiles?.some(f => f.isBuktiPembayaran);
+                          const grandTotal = sub.items.reduce((s, i) => s + (i.total || 0), 0);
+                          const invoiceAmtComputed = typeof sub.invoiceAmount === 'number' ? sub.invoiceAmount : grandTotal;
+
+                          // Extract specific invoice file if uploaded
+                          const invoiceFileObj = sub.googleDriveFiles?.find(
+                            f => f.docType === 'invoice_vendor' || 
+                                 (f.name || '').toLowerCase().includes('invoice') || 
+                                 (f.name || '').toLowerCase().includes('tagihan')
+                          ) || sub.googleDriveFiles?.find(
+                            f => !f.isBuktiPembayaran && !f.isF1 && !f.isF2 && f.docType !== 'merged_all'
+                          );
+
+                          // Extract payment proof file
+                          const paymentProofObj = sub.buktiPembayaran || sub.googleDriveFiles?.find(f => f.isBuktiPembayaran);
+
+                          return (
+                            <tr
+                              key={sub.id}
+                              onClick={() => onSelect(sub)}
+                              className="hover:bg-stone-50/50 hover:text-stone-900 transition-colors cursor-pointer"
+                            >
+                              {/* Tanggal & Voucher Code */}
+                              <td className="py-3 px-4 border-r border-stone-200/85">
+                                <div className="font-mono text-[11px] font-black text-stone-900">{sub.kode || 'HO'}</div>
+                                <div className="text-[10px] text-stone-500 font-mono mt-0.5">{formatDateIndonesian(sub.tanggal)}</div>
+                              </td>
+
+                              {/* Invoice Number */}
+                              <td className="py-3 px-4 border-r border-stone-200/85 font-mono">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-stone-850 break-all">{sub.invoiceNumber || sub.kode || 'Tanpa Kode'}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigator.clipboard.writeText(sub.invoiceNumber || sub.kode || '');
+                                      setCopiedId(sub.id);
+                                      setTimeout(() => setCopiedId(null), 1500);
+                                    }}
+                                    className="p-1 hover:bg-stone-150 rounded transition text-stone-400 hover:text-stone-700 print:hidden shrink-0"
+                                    title="Salin Nomor Identifikasi"
+                                  >
+                                    {copiedId === sub.id ? (
+                                      <Check size={11} className="text-emerald-600" />
+                                    ) : (
+                                      <Copy size={11} />
+                                    )}
+                                  </button>
+                                </div>
+                                <span className="text-[10px] text-stone-400 block font-sans block truncate mt-0.5" title={sub.jenisPengajuan}>
+                                  Kategori: {sub.jenisPengajuan}
+                                </span>
+                              </td>
+
+                              {/* Vendor / Recipient */}
+                              <td className="py-3 px-4 border-r border-stone-200/85 font-semibold text-stone-850">
+                                <div className="truncate max-w-[170px]" title={sub.dibayarkanKepada}>
+                                  {sub.dibayarkanKepada}
+                                </div>
+                                <span className="text-[9.5px] text-stone-400 font-mono block font-medium mt-0.5">Loc: {sub.lokasi || 'Lt. 1'}</span>
+                              </td>
+
+                              {/* Nominal */}
+                              <td className="py-3 px-4 border-r border-stone-200/85 text-right font-mono font-bold text-stone-900">
+                                Rp {formatRupiah(invoiceAmtComputed)}
+                              </td>
+
+                              {/* File Bukti: Invoice & Bukti Pembayaran */}
+                              <td className="py-3 px-4 border-r border-stone-200/85" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex flex-col gap-1 items-center justify-center">
+                                  {/* Render Invoice File Badge */}
+                                  {invoiceFileObj ? (
+                                    <a
+                                      href={invoiceFileObj.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-2 py-1 w-full bg-amber-50 hover:bg-amber-100 text-[#917118] border border-amber-200 rounded-lg text-[9.5px] font-black transition tracking-tight shadow-3xs"
+                                      title={`Nama Berkas: ${invoiceFileObj.name}`}
+                                    >
+                                      <FileText size={11} className="shrink-0" />
+                                      <span className="truncate max-w-[90px]">{invoiceFileObj.name || 'Dokumen Invoice'}</span>
+                                      <ExternalLink size={10} className="shrink-0 ml-auto" />
+                                    </a>
+                                  ) : (
+                                    <span className="text-[9px] text-stone-350 italic block border border-dashed border-stone-200 px-2 py-0.5 rounded-lg w-full text-center">
+                                      File Invoice (-)
+                                    </span>
+                                  )}
+
+                                  {/* Render Payment Proof Badge */}
+                                  {paymentProofObj ? (
+                                    <a
+                                      href={paymentProofObj.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-2 py-1 w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[9.5px] font-black transition tracking-tight shadow-3xs"
+                                      title={`Nama Berkas: ${paymentProofObj.name}`}
+                                    >
+                                      <Cloud size={11} className="shrink-0" />
+                                      <span className="truncate max-w-[90px]">{paymentProofObj.name || 'Bukti Transfer'}</span>
+                                      <ExternalLink size={10} className="shrink-0 ml-auto" />
+                                    </a>
+                                  ) : (
+                                    <span className="text-[9px] text-stone-350 italic block border border-dashed border-stone-200 px-2 py-0.5 rounded-lg w-full text-center">
+                                      Bukti Bayar (-)
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Status Badging */}
+                              <td className="py-3 px-4 border-r border-stone-200/85 text-center select-none">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[9.5px] font-mono font-bold uppercase tracking-wider ${
+                                  isLunas
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-250'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-250'
+                                }`}>
+                                  {isLunas ? 'Lunas' : 'Belum Lunas'}
+                                </span>
+                              </td>
+
+                              {/* Action Buttons Link */}
+                              <td className="py-3 px-4 whitespace-nowrap text-center print:hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => onSelect(sub)}
+                                    className="p-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg transition shadow-3xs"
+                                    title="Lihat Voucher Transaksi"
+                                  >
+                                    <Eye size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => onEdit(sub)}
+                                    className="p-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg transition shadow-3xs"
+                                    title="Edit Informasi"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      // Focus select and print it directly
+                                      onSelect(sub);
+                                      setTimeout(() => {
+                                        window.print();
+                                      }, 500);
+                                    }}
+                                    className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg transition border border-amber-250 shadow-3xs"
+                                    title="Cetak Bukti Voucher & File Transaksi"
+                                  >
+                                    <Printer size={12} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="py-24 text-center space-y-2">
+                      <AlertCircle className="mx-auto text-stone-400" size={32} />
+                      <div className="text-stone-850 font-bold text-xs mt-1">Saringan Kosong</div>
+                      <p className="text-[11px] text-stone-400 max-w-sm mx-auto">Tidak ditemukan transaksi invoice yang sesuai dengan keyword pencarian, status, atau filter bulan Anda.</p>
+                      <button
+                        onClick={() => {
+                          setInvoiceMonthFilter('All');
+                          setInvoiceStatusFilter('All');
+                          setInvoiceSearchQuery('');
+                        }}
+                        className="text-[11px] px-3 py-1 bg-stone-100 hover:bg-stone-150 rounded-lg font-bold text-stone-800 transition"
+                      >
+                        Hapus Semua Filter
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Print only detailed list table */}
+                <div className="hidden print:block font-sans text-xs pt-4">
+                  <span className="block font-mono text-[10px] font-bold uppercase text-stone-500 mb-2">Lampiran Rekapitulasi Detail Transaksi Invoice</span>
+                  <table className="w-full text-left border-collapse border border-stone-300">
+                    <thead>
+                      <tr className="bg-stone-200/50 text-stone-800 text-[9px] uppercase font-mono border-b border-stone-300">
+                        <th className="p-2 border border-stone-300">Tanggal</th>
+                        <th className="p-2 border border-stone-300">Voucher & Invoice#</th>
+                        <th className="p-2 border border-stone-300">Vendor / Penerima</th>
+                        <th className="p-2 border border-stone-300">Kategori</th>
+                        <th className="p-2 border border-stone-300 text-right">Nominal</th>
+                        <th className="p-2 border border-stone-300 text-center">Status</th>
+                        <th className="p-2 border border-stone-300">Catatan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredInvoiceSubmissions.map((sub, idx) => {
+                        const isLunas = sub.buktiPembayaran || sub.googleDriveFiles?.some(f => f.isBuktiPembayaran);
+                        const grandTotal = sub.items.reduce((s, i) => s + (i.total || 0), 0);
+                        const invoiceAmtComputed = typeof sub.invoiceAmount === 'number' ? sub.invoiceAmount : grandTotal;
+                        return (
+                          <tr key={sub.id} className="border-b border-stone-300 font-sans text-[10px]">
+                            <td className="p-2 border border-stone-300 font-mono">{sub.tanggal}</td>
+                            <td className="p-2 border border-stone-300 font-bold font-mono">
+                              {sub.invoiceNumber || sub.kode}
+                            </td>
+                            <td className="p-2 border border-stone-300 font-mono">{sub.dibayarkanKepada}</td>
+                            <td className="p-2 border border-stone-300">{sub.jenisPengajuan}</td>
+                            <td className="p-2 border border-stone-300 text-right font-bold font-mono">Rp {invoiceAmtComputed.toLocaleString('id-ID')}</td>
+                            <td className="p-2 border border-stone-300 text-center uppercase font-mono font-bold">
+                              {isLunas ? 'LUNAS (BUKTI ADA)' : 'PENDING'}
+                            </td>
+                            <td className="p-2 border border-stone-300 text-[9px] text-stone-500 italic max-w-[120px] truncate">{sub.notes || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  
+                  {/* Formal signatures block for print reports */}
+                  <div className="grid grid-cols-2 gap-8 mt-12 text-center text-xs font-sans">
+                    <div>
+                      <p className="text-stone-500 uppercase text-[9px] mb-12">YANG MELAPORKAN (FINANCE)</p>
+                      <strong>{submissions[0]?.dibuatOleh || 'Nur Wahyudi'}</strong>
+                      <p className="text-[10px] text-stone-400">Divisi Keuangan & Verifikasi</p>
+                    </div>
+                    <div>
+                      <p className="text-stone-500 uppercase text-[9px] mb-12">DISETUJUI OLEH (DIREKTUR UTAMA)</p>
+                      <strong>{submissions[0]?.disetujuiOleh2 || 'H. A. Nursyam Halid'}</strong>
+                      <p className="text-[10px] text-stone-400">Direktur Utama</p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+
         </div>
       ) : (
         /* Log Riwayat Audit Detail View */

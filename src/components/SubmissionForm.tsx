@@ -7,7 +7,7 @@ import {
   getConnectedDrives 
 } from '../firebase';
 import { DriveAccountsManager } from './DriveAccountsManager';
-import { Trash2, Plus, ArrowLeft, Save, AlertCircle, Sparkles, Cloud, Loader2 } from 'lucide-react';
+import { Trash2, Plus, ArrowLeft, Save, AlertCircle, Sparkles, Cloud, Loader2, FileText } from 'lucide-react';
 import { generateF1PdfBytes, generateF2PdfBytes, formatDateIndonesian, convertImageToPdf } from '../utils';
 
 interface SubmissionFormProps {
@@ -220,6 +220,12 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   const [status, setStatus] = useState<'Lunas' | 'Belum Lunas'>('Lunas');
   const [notes, setNotes] = useState('');
 
+  // Invoice fields
+  const [isInvoice, setIsInvoice] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [invoiceAmount, setInvoiceAmount] = useState<number | string>('');
+
   // Signatures
   const [dibuatOleh, setDibuatOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_CREATOR_NAME') || 'Nur Wahyudi');
   const [disetujuiOleh, setDisetujuiOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_APPROVER_NAME') || 'Harijon');
@@ -359,6 +365,10 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setDibayarkanDengan(initialSubmission.dibayarkanDengan);
       setStatus(initialSubmission.status || (initialSubmission.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas'));
       setNotes(initialSubmission.notes);
+      setIsInvoice(initialSubmission.isInvoice || false);
+      setInvoiceNumber(initialSubmission.invoiceNumber || '');
+      setInvoiceDate(initialSubmission.invoiceDate || '');
+      setInvoiceAmount(initialSubmission.invoiceAmount !== undefined ? initialSubmission.invoiceAmount : '');
       setGoogleDriveFileUrl(initialSubmission.googleDriveFileUrl || '');
       setGoogleDriveFileName(initialSubmission.googleDriveFileName || '');
       if (initialSubmission.googleDriveFiles && initialSubmission.googleDriveFiles.length > 0) {
@@ -879,6 +889,13 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         dibayarkanDengan,
         status: finalBuktiPembayaran ? 'Lunas' : 'Belum Lunas',
         notes,
+        
+        // Save Invoice properties
+        isInvoice,
+        invoiceNumber,
+        invoiceDate,
+        invoiceAmount: invoiceAmount !== '' ? Number(invoiceAmount) : undefined,
+
         googleDriveFileUrl: finalFileUrl,
         googleDriveFileName: finalFileName,
         googleDriveFiles: finalFiles,
@@ -1099,6 +1116,52 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
+        </div>
+
+        {/* SECTION KLASIFIKASI & INFORMASI INVOICE */}
+        <div className="border border-stone-200/80 rounded-2xl p-5 space-y-4 bg-stone-50/30">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <h3 className="text-xs font-black uppercase font-mono tracking-wider text-stone-600 flex items-center gap-1.5">
+                <FileText size={14} className="text-gold-dynamic" />
+                Klasifikasi Transaksi Invoice / Tagihan
+              </h3>
+              <p className="text-[11px] text-stone-400">Tandai jika pembayaran ini didasari invoice/billing supplier agar otomatis dicatat dalam rekap bulanan.</p>
+            </div>
+            <div className="flex items-center gap-2.5 self-start sm:self-auto bg-white border border-stone-200 px-3 py-1.5 rounded-xl shadow-3xs select-none">
+              <span className="text-[11px] font-bold text-stone-700">Tipe Transaksi Invoice?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const val = !isInvoice;
+                  setIsInvoice(val);
+                  if (!val) {
+                    setInvoiceNumber('');
+                    setInvoiceDate('');
+                  }
+                }}
+                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isInvoice ? 'bg-amber-500' : 'bg-stone-200'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-3xs ring-0 transition duration-200 ease-in-out ${
+                    isInvoice ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {isInvoice && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-[11px] text-amber-800 animate-fade-in flex items-start gap-2">
+              <Sparkles size={14} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-bold">Transaksi Berjenis Invoice Aktif</span>
+                <p className="text-stone-500">Sistem akan otomatis merekap transaksi ini berdasarkan <strong>Kode Dokumen</strong> dan <strong>Tanggal Transaksi</strong> yang diinput di atas. Tidak memerlukan pengisian ganda yang membingungkan!</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* SECTION GOOGLE DRIVE UPLOAD */}

@@ -20,6 +20,12 @@ export interface Submission {
   status?: 'Lunas' | 'Belum Lunas';
   notes: string;
   
+  // Invoice properties
+  isInvoice?: boolean;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  invoiceAmount?: number;
+  
   // Google Drive attachment support
   googleDriveFileUrl?: string;
   googleDriveFileName?: string;
@@ -56,6 +62,7 @@ export interface ActivityLog {
 }
 
 export const REQUIRED_TRANSACTION_DOCS = [
+  { key: 'invoice_vendor', label: 'Invoice Vendor', fullName: 'Invoice / Surat Tagihan Vendor' },
   { key: 'po', label: 'PO', fullName: 'PO (Purchase Order)' },
   { key: 'lhv', label: 'LHV', fullName: 'LHV (Laporan Hasil Verifikasi)' },
   { key: 'draft_survei', label: 'Draft Survei', fullName: 'Draft Survei (Survey Draft)' },

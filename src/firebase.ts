@@ -207,6 +207,12 @@ export const mapFirestoreToSubmission = (docId: string, data: any): Submission =
     googleDriveFileName: data.googleDriveFileName || '',
     googleDriveFiles: data.googleDriveFiles || (data.googleDriveFileUrl ? [{ url: data.googleDriveFileUrl, name: data.googleDriveFileName || 'Buka di Drive' }] : []),
 
+    // Invoice properties mapping
+    isInvoice: !!data.isInvoice,
+    invoiceNumber: data.invoiceNumber || '',
+    invoiceDate: data.invoiceDate || '',
+    invoiceAmount: typeof data.invoiceAmount === 'number' ? data.invoiceAmount : undefined,
+
     items: mappedItems,
     createdAt: createdAtStr
   };
@@ -320,6 +326,11 @@ export const mapSubmissionToFirestore = (
     
     // Double save native fields so pulling it back preserves signatures
     id: sub.id,
+    isInvoice: !!sub.isInvoice,
+    invoiceNumber: sub.invoiceNumber || '',
+    invoiceDate: sub.invoiceDate || '',
+    invoiceAmount: typeof sub.invoiceAmount === 'number' ? sub.invoiceAmount : null,
+    
     lokasi: sub.lokasi || 'Lt. 1',
     tanggal: sub.tanggal || '',
     jenisPengajuan: sub.jenisPengajuan || '',
