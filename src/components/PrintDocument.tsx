@@ -68,6 +68,24 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
   const [fileOwnership, setFileOwnership] = useState<{[key: string]: 'mine' | 'others' | 'unknown'}>({});
   const [isCopying, setIsCopying] = useState<{[key: string]: boolean}>({});
 
+  const [isConnectedToDrive, setIsConnectedToDrive] = useState(!!getStoredGoogleDriveToken());
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
+
+  const handleConnectDriveFromWarning = async () => {
+    setIsConnectingDrive(true);
+    try {
+      const loginRes = await googleDriveLogin();
+      if (loginRes.accessToken) {
+        setIsConnectedToDrive(true);
+        setReloadTrigger(prev => prev + 1);
+      }
+    } catch (err: any) {
+      alert("Gagal menghubungkan Google Drive Anda: " + (err.message || err));
+    } finally {
+      setIsConnectingDrive(false);
+    }
+  };
+
   const grandTotal = submission.items.reduce((sum, item) => sum + item.total, 0);
 
   const billFiles = (submission.googleDriveFiles || []).filter(
@@ -1061,8 +1079,50 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                         Akun Google Drive aktif Anda saat ini tidak memiliki hak akses langsung ke file ID dokumen dari pengunggah asal.
                       </p>
                       <p className="text-[11px] text-amber-800 leading-relaxed font-medium pt-1 border-t border-amber-200">
-                        Solusi Mudah: Klik tombol <span className="bg-amber-605 text-white px-1 py-0.5 rounded font-mono font-bold font-sans text-[10px]">Salin ke Drive Saya</span> pada panel kanan atas layar ini untuk menyimpan salinan berkas ini di akun Google Drive Anda agar dapat ditampilkan dan dicetak otomatis.
+                        Solusi Mudah: Hubungkan akun Google Drive Anda atau klik tombol salin berikut untuk menyimpannya ke Drive Anda agar dapat ditampilkan otomatis.
                       </p>
+
+                      {(() => {
+                        const file = attachmentFiles[page.fileIndex];
+                        const url = file?.url || '';
+                        const dMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                        const idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                        const fileId = (dMatch && dMatch[1]) || (idMatch && idMatch[1]);
+                        const copying = fileId ? isCopying[fileId] : false;
+
+                        return (
+                          <div className="mt-3 pt-3 border-t border-amber-200 flex flex-col sm:flex-row gap-2">
+                            <button
+                              onClick={handleConnectDriveFromWarning}
+                              disabled={isConnectingDrive}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white font-extrabold rounded-lg text-[10px] transition cursor-pointer shadow-3xs leading-none shrink-0"
+                            >
+                              <Cloud size={11} className="text-[#D4AF37]" />
+                              <span>{isConnectedToDrive ? 'Ganti/Hubungkan Akun GDrive' : 'Hubungkan Akun Google Drive'}</span>
+                            </button>
+
+                            {fileId && (
+                              <button
+                                onClick={() => handleCopyFileToMyDrive(url, file.name)}
+                                disabled={copying}
+                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-200 text-white font-extrabold rounded-lg text-[10px] transition cursor-pointer shadow-3xs leading-none"
+                              >
+                                {copying ? (
+                                  <>
+                                    <Loader2 size={11} className="animate-spin" />
+                                    <span>Menyalin...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Cloud size={11} />
+                                    <span>Salin ke Drive Saya (Bisa Tampil)</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 ) : (
