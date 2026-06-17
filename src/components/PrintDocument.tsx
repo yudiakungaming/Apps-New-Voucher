@@ -3,7 +3,7 @@ import { Submission } from '../types';
 import { formatRupiah, formatDateIndonesian, numberToTerbilang } from '../utils';
 import { NusantaraLogo } from './NusantaraLogo';
 import { Printer, ArrowLeft, Layers, FileText, CheckCircle, Cloud, Loader2 } from 'lucide-react';
-import { getStoredGoogleDriveToken, googleDriveLogin } from '../firebase';
+import { getStoredGoogleDriveToken, googleDriveLogin, saveSubmissionToFirestore } from '../firebase';
 
 interface PrintDocumentProps {
   submission: Submission;
@@ -63,6 +63,9 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
   const [loadError, setLoadError] = useState('');
   const [reloadTrigger, setReloadTrigger] = useState(0);
 
+  const [fileOwnership, setFileOwnership] = useState<{[key: string]: 'mine' | 'others' | 'unknown'}>({});
+  const [isCopying, setIsCopying] = useState<{[key: string]: boolean}>({});
+
   const grandTotal = submission.items.reduce((sum, item) => sum + item.total, 0);
 
   const billFiles = (submission.googleDriveFiles || []).filter(
@@ -81,6 +84,160 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
     ...activeBillFiles,
     ...(paymentProofFile ? [{ ...paymentProofFile, isBuktiPembayaran: true }] : [])
   ];
+
+  // Check which files are owned by the current user vs others in Drive
+  useEffect(() => {
+    const checkFilesOwnership = async () => {
+      const token = getStoredGoogleDriveToken();
+      if (!token || attachmentFiles.length === 0) return;
+
+      const newOwnership: {[key: string]: 'mine' | 'others' | 'unknown'} = {};
+      
+      for (const file of attachmentFiles) {
+        if (!file.url) continue;
+        const dMatch = file.url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        const idMatch = file.url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        const fileId = (dMatch && dMatch[1]) || (idMatch && idMatch[1]);
+        
+        if (fileId) {
+          try {
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=owners(me,emailAddress)`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const isMine = data.owners && data.owners.some((o: any) => o.me === true);
+              newOwnership[fileId] = isMine ? 'mine' : 'others';
+            } else {
+              // If we fail because we don't own it or can't see owners, it's owned by others
+              newOwnership[fileId] = 'others';
+            }
+          } catch (err) {
+            newOwnership[fileId] = 'unknown';
+          }
+        }
+      }
+      
+      setFileOwnership(prev => ({ ...prev, ...newOwnership }));
+    };
+
+    checkFilesOwnership();
+  }, [submission, reloadTrigger]);
+
+  const handleCopyFileToMyDrive = async (fileUrl: string, fileName: string) => {
+    const dMatch = fileUrl ? fileUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) : null;
+    const idMatch = fileUrl ? fileUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) : null;
+    const fileId = (dMatch && dMatch[1]) || (idMatch && idMatch[1]);
+    
+    if (!fileId) {
+      alert("Maaf, ID berkas tidak ditemukan di URL ini.");
+      return;
+    }
+    
+    let token = getStoredGoogleDriveToken();
+    if (!token) {
+      try {
+        const loginRes = await googleDriveLogin();
+        token = loginRes.accessToken;
+      } catch (err: any) {
+        alert("Gagal menghubungkan Google Drive Anda: " + (err.message || err));
+        return;
+      }
+    }
+    
+    if (!token) {
+      alert("Silakan hubungkan akun Google Drive Anda terlebih dahulu.");
+      return;
+    }
+    
+    setIsCopying(prev => ({ ...prev, [fileId]: true }));
+    
+    try {
+      // 1. Copy the file in Drive using copy API
+      const copyRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/copy?fields=id,name,webViewLink`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: fileName
+        })
+      });
+      
+      if (!copyRes.ok) {
+        const errText = await copyRes.text();
+        throw new Error(`Google API error ${copyRes.status}: ${errText}`);
+      }
+      
+      const newFileData = await copyRes.json();
+      const newFileId = newFileData.id;
+      const newFileUrl = `https://docs.google.com/uc?export=view&id=${newFileId}`;
+      
+      // 2. Grant permissions to anyone with link as reader
+      try {
+        await fetch(`https://www.googleapis.com/drive/v3/files/${newFileId}/permissions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            role: 'reader',
+            type: 'anyone'
+          })
+        });
+      } catch (perErr) {
+        console.warn("Could not set permissions for copied file:", perErr);
+      }
+      
+      // 3. Update paths in Firestore
+      const updatedSubmission = { ...submission };
+      
+      if (updatedSubmission.googleDriveFileUrl === fileUrl) {
+        updatedSubmission.googleDriveFileUrl = newFileUrl;
+      }
+      
+      if (updatedSubmission.buktiPembayaran && updatedSubmission.buktiPembayaran.url === fileUrl) {
+        updatedSubmission.buktiPembayaran = {
+          ...updatedSubmission.buktiPembayaran,
+          url: newFileUrl
+        };
+      }
+      
+      if (updatedSubmission.googleDriveFiles) {
+        updatedSubmission.googleDriveFiles = updatedSubmission.googleDriveFiles.map(f => {
+          if (f.url === fileUrl) {
+            return {
+              ...f,
+              url: newFileUrl
+            };
+          }
+          return f;
+        });
+      }
+      
+      await saveSubmissionToFirestore(
+        updatedSubmission,
+        userProfile?.companyId || 'nmsa',
+        userProfile?.companyName || 'PT Nusantara Mineral Sukses Abadi'
+      );
+      
+      // Update local states
+      setFileOwnership(prev => ({ ...prev, [newFileId]: 'mine' }));
+      
+      alert(`Sukses menyalin berkas "${fileName}" ke Google Drive Anda! Sekarang berkas aman tersimpan di akun Anda.`);
+      
+      setReloadTrigger(prev => prev + 1);
+    } catch (err: any) {
+      console.error("Failed to copy file:", err);
+      alert("Gagal menyalin berkas ke Google Drive Anda: " + (err.message || err));
+    } finally {
+      setIsCopying(prev => ({ ...prev, [fileId]: false }));
+    }
+  };
 
   // Dynamic document title based on "Jenis Pengajuan & Nomor Kode" for proper PDF download naming
   useEffect(() => {
@@ -435,19 +592,82 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
         </div>
 
         {attachmentFiles.length > 0 && (
-          <div className="flex flex-col gap-1 p-2 px-3 bg-amber-50 border border-amber-200 rounded-xl print:hidden max-w-[300px]">
-            <div className="flex items-center gap-1.5">
-              <Cloud size={14} className="text-[#D4AF37]" />
-              <span className="font-semibold text-stone-700 text-xs">Akses Lampiran ({attachmentFiles.length} File):</span>
+          <div className="flex flex-col gap-2 p-3 bg-stone-50 border border-stone-200 rounded-xl print:hidden w-full lg:max-w-[340px]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Cloud size={14} className="text-amber-600" />
+                <span className="font-semibold text-stone-700 text-xs">Akses & Status Lampiran:</span>
+              </div>
+              <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded-sm">
+                {attachmentFiles.length} Berkas
+              </span>
             </div>
-            <div className="text-[11px] max-h-[60px] overflow-y-auto space-y-1">
-              {attachmentFiles.map((file, i) => (
-                <div key={i} className="truncate">
-                  {i + 1}. <a href={file.url} target="_blank" rel="noreferrer" className="text-amber-800 hover:underline font-bold font-mono">
-                    {file.name}
-                  </a>
-                </div>
-              ))}
+            <div className="text-[11px] max-h-[140px] overflow-y-auto space-y-1.5 scrollbar-thin">
+              {attachmentFiles.map((file, i) => {
+                const url = file.url || '';
+                const dMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                const idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                const fileId = (dMatch && dMatch[1]) || (idMatch && idMatch[1]);
+                
+                const ownership = fileId ? fileOwnership[fileId] : 'unknown';
+                const copying = fileId ? isCopying[fileId] : false;
+
+                return (
+                  <div key={i} className="p-1.5 bg-white border border-stone-200 rounded-lg flex flex-col gap-1 shadow-3xs">
+                    <div className="flex items-start justify-between gap-1">
+                      <div className="min-w-0 flex-1">
+                        <a 
+                          href={url} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="font-bold text-stone-850 hover:text-amber-700 hover:underline block truncate"
+                          title={file.name}
+                        >
+                          {i + 1}. {file.name}
+                        </a>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between gap-2 border-t border-stone-100 pt-1 mt-0.5">
+                      <span className="text-[9px] font-mono leading-none flex items-center gap-1">
+                        {ownership === 'mine' ? (
+                          <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Tersimpan di Drive Anda
+                          </span>
+                        ) : ownership === 'others' ? (
+                          <span className="text-amber-600 font-semibold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            Di Drive Akun Lain
+                          </span>
+                        ) : (
+                          <span className="text-stone-400">Memeriksa kepemilikan...</span>
+                        )}
+                      </span>
+
+                      {fileId && ownership === 'others' && (
+                        <button
+                          onClick={() => handleCopyFileToMyDrive(url, file.name)}
+                          disabled={copying}
+                          className="text-[9px] bg-amber-600 hover:bg-amber-700 disabled:bg-stone-200 text-white font-bold px-2 py-0.5 rounded transition flex items-center gap-0.5 shrink-0"
+                        >
+                          {copying ? (
+                            <>
+                              <Loader2 size={10} className="animate-spin" />
+                              <span>Menyalin...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Cloud size={10} />
+                              <span>Salin ke Drive Saya</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -846,46 +1066,30 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             margin: 0 !important;
             padding: 0 !important;
           }
-          .print\\:hidden {
+          .print\:hidden {
             display: none !important;
           }
+          /* Ensure each form fits exactly on a single A4 page */
           .page-break {
-            box-shadow: none !important;
+            page-break-after: always !important;
+            break-after: page !important;
             border: none !important;
             padding: 0 !important;
             margin: 0 !important;
-            page-break-inside: avoid !important;
-            break-inside: avoid !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            box-shadow: none !important;
           }
-          .print-landscape {
+          .page-break.print-landscape {
             page: landscape-page !important;
-            width: 100% !important;
-            height: 100% !important;
-            max-width: 100% !important;
-            max-height: 100% !important;
-            box-sizing: border-box !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-          }
-          .print-portrait {
-            page: auto !important;
-            width: 100% !important;
-            height: 100% !important;
-            max-width: 100% !important;
-            max-height: 100% !important;
-            box-sizing: border-box !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
           }
           .page-break img {
-            max-width: 100% !important;
-            max-height: 100% !important;
-            width: auto !important;
+            width: 100% !important;
             height: auto !important;
             display: block !important;
-            object-fit: contain !important;
+            max-width: 100% !important;
+            max-height: none !important;
           }
           .page-break:not(:last-child) {
             page-break-after: always !important;
