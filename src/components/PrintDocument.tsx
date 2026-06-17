@@ -124,13 +124,90 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
           }
 
           if (file.url && (file.url.startsWith('data:') || file.url.startsWith('blob:'))) {
-            tempPages.push({
-              id: `direct-b64-${i}-${Date.now()}`,
-              fileName: file.name,
-              fileIndex: i,
-              pageNumber: 1,
-              dataUrl: file.url
-            });
+            const isPdf = /\.pdf/i.test(file.name || '') || file.url.startsWith('data:application/pdf');
+            if (isPdf) {
+              if (isMounted) {
+                setLoadingProgress(`Membaca dokumen PDF ${file.name}...`);
+              }
+              try {
+                const pdfjsLib = await loadPdfJs();
+                let pdfData: any = file.url;
+                if (file.url.startsWith('data:application/pdf;base64,')) {
+                  const base64Content = file.url.split(',')[1];
+                  const binStr = atob(base64Content);
+                  const len = binStr.length;
+                  const bytes = new Uint8Array(len);
+                  for (let j = 0; j < len; j++) {
+                    bytes[j] = binStr.charCodeAt(j);
+                  }
+                  pdfData = { data: bytes.buffer };
+                }
+                const pdf = await pdfjsLib.getDocument(pdfData).promise;
+
+                for (let pNum = 1; pNum <= pdf.numPages; pNum++) {
+                  if (isMounted) {
+                    setLoadingProgress(`Merender PDF ${file.name} - Halaman ${pNum} dari ${pdf.numPages}...`);
+                  }
+                  const page = await pdf.getPage(pNum);
+                  const viewport = page.getViewport({ scale: 2.2 });
+                  const canvas = document.createElement('canvas');
+                  const context = canvas.getContext('2d');
+                  if (!context) continue;
+
+                  canvas.height = viewport.height;
+                  canvas.width = viewport.width;
+
+                  await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                  }).promise;
+
+                  const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                  const isLandscape = viewport.width > viewport.height;
+                  tempPages.push({
+                    id: `b64-pdf-${i}-p${pNum}`,
+                    fileName: file.name,
+                    fileIndex: i,
+                    pageNumber: pNum,
+                    dataUrl,
+                    isLandscape
+                  });
+                }
+              } catch (pdfErr) {
+                console.error('Error rendering base64 PDF, falling back to direct:', pdfErr);
+                tempPages.push({
+                  id: `direct-b64-${i}-${Date.now()}`,
+                  fileName: file.name,
+                  fileIndex: i,
+                  pageNumber: 1,
+                  dataUrl: file.url,
+                  isLandscape: false
+                });
+              }
+            } else {
+              let isLandscape = false;
+              try {
+                const img = new Image();
+                img.src = file.url;
+                await new Promise((resolve) => {
+                  img.onload = () => {
+                    isLandscape = img.width > img.height;
+                    resolve(null);
+                  };
+                  img.onerror = () => resolve(null);
+                });
+              } catch (e) {
+                console.warn('Failed to parse direct file orientation, defaulting to portrait', e);
+              }
+              tempPages.push({
+                id: `direct-b64-${i}-${Date.now()}`,
+                fileName: file.name,
+                fileIndex: i,
+                pageNumber: 1,
+                dataUrl: file.url,
+                isLandscape
+              });
+            }
             continue;
           }
 
@@ -162,12 +239,29 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             if (!isPdf) {
               // Non-PDF files (images) do not need CORS-compliant binary blobs!
               // We can render them directly using the Google Drive direct uc export view URL inside img tags
+              const dataUrl = `https://docs.google.com/uc?export=view&id=${fileId}`;
+              let isLandscape = false;
+              try {
+                const img = new Image();
+                img.src = dataUrl;
+                await new Promise((resolve) => {
+                  img.onload = () => {
+                    isLandscape = img.width > img.height;
+                    resolve(null);
+                  };
+                  img.onerror = () => resolve(null);
+                });
+              } catch (e) {
+                console.warn('Failed to parse fallback image orientation, defaulting to portrait', e);
+              }
+
               tempPages.push({
                 id: `${fileId}-fallback-img`,
                 fileName: file.name,
                 fileIndex: i,
                 pageNumber: 1,
-                dataUrl: `https://docs.google.com/uc?export=view&id=${fileId}`
+                dataUrl,
+                isLandscape
               });
               continue;
             }
@@ -693,31 +787,39 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                           : fileObj?.docType === 'merged_all' ? 'Gabungan Dokumen Utama'
                           : `Lampiran B${page.fileIndex + 1}`;
 
+          const isLandscape = page.isLandscape === true;
+
           return (
             <React.Fragment key={page.id}>
               {/* Divider for Screen View, hidden during printing */}
               {activeTab === 'both' && (
-                <div className="w-[210mm] border-t-2 border-dashed border-stone-300 py-3 print:hidden flex justify-center">
+                <div className={`${isLandscape ? 'w-[297mm]' : 'w-[210mm]'} border-t-2 border-dashed border-stone-300 py-3 print:hidden flex justify-center transition-all duration-200`}>
                   <span className="text-xs bg-stone-100 text-[#917118] px-3 py-1 rounded-full font-semibold uppercase font-mono">
-                    BATAS HALAMAN {fileLabel.toUpperCase()} (PAGE BREAK - LAMPIRAN)
+                    BATAS HALAMAN {fileLabel.toUpperCase()} (PAGE BREAK - {isLandscape ? 'LANDSCAPE' : 'PORTRAIT'})
                   </span>
                 </div>
               )}
 
-              {/* Responsive container matching natural height with no hardcoding limit at 297mm */}
-              <div className="w-[210mm] h-auto bg-white border border-stone-250 shadow-md rounded-xl print:shadow-none print:border-none print:rounded-none print:p-0 print:m-0 page-break relative overflow-hidden bg-stone-50/10">
+              {/* Responsive container matching orientation format on screen & print */}
+              <div 
+                className={`bg-white border border-stone-250 shadow-md rounded-xl print:shadow-none print:border-none print:rounded-none print:p-0 print:m-0 page-break relative overflow-hidden bg-stone-50/10 flex items-center justify-center transition-all duration-200 ${
+                  isLandscape 
+                    ? 'w-[297mm] min-h-[210mm] h-[210mm] print-landscape' 
+                    : 'w-[210mm] min-h-[297mm] h-[297mm] print-portrait'
+                }`}
+              >
                 {/* Visualizer Image matching exactly the PDF pages layout as requested */}
                 <img
                   src={page.dataUrl}
                   alt={page.fileName}
-                  className="w-full h-auto block"
+                  className="max-w-full max-h-full object-contain"
                 />
 
                 {/* Floating screen-only badge to maintain complete page counts */}
                 <div className="absolute top-4 right-4 bg-stone-900/85 text-white font-mono text-[9px] px-2.5 py-1 rounded-md shadow-md flex items-center gap-1.5 select-none print:hidden z-10">
                   <FileText size={10} className="text-amber-400" />
                   <span>
-                    Halaman {pageNum} / {totalPagesCount} ({fileLabel} - Hal {page.pageNumber})
+                    Halaman {pageNum} / {totalPagesCount} ({fileLabel} - Hal {page.pageNumber} - {isLandscape ? 'Landscape' : 'Portrait'})
                   </span>
                 </div>
               </div>
@@ -734,6 +836,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             size: A4 portrait;
             margin: 12mm 15mm 12mm 15mm;
           }
+          @page landscape-page {
+            size: A4 landscape;
+            margin: 12mm 15mm 12mm 15mm;
+          }
           body {
             background-color: white !important;
             color: black !important;
@@ -748,16 +854,38 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             border: none !important;
             padding: 0 !important;
             margin: 0 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          .print-landscape {
+            page: landscape-page !important;
             width: 100% !important;
-            height: auto !important;
-            min-height: 0 !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          .print-portrait {
+            page: auto !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
           }
           .page-break img {
-            width: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            width: auto !important;
             height: auto !important;
             display: block !important;
-            max-width: 100% !important;
-            max-height: none !important;
+            object-fit: contain !important;
           }
           .page-break:not(:last-child) {
             page-break-after: always !important;
