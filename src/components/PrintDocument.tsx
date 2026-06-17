@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Submission } from '../types';
 import { formatRupiah, formatDateIndonesian, numberToTerbilang } from '../utils';
 import { NusantaraLogo } from './NusantaraLogo';
-import { Printer, ArrowLeft, Layers, FileText, CheckCircle, Cloud, Loader2 } from 'lucide-react';
+import { Printer, ArrowLeft, Layers, FileText, CheckCircle, Cloud, Loader2, Lock, ShieldAlert } from 'lucide-react';
 import { getStoredGoogleDriveToken, googleDriveLogin, saveSubmissionToFirestore } from '../firebase';
 
 interface PrintDocumentProps {
@@ -1063,25 +1063,51 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                 }`}
               >
                 {page.isPlaceholder ? (
-                  <div className="flex flex-col items-center justify-center text-center p-8 max-w-xl">
-                    <Cloud className="text-amber-500 w-16 h-16 mb-4 animate-pulse" />
-                    <h4 className="text-base font-bold text-stone-800 uppercase tracking-wide mb-1">
+                  <div className="flex flex-col items-center justify-center text-center p-8 max-w-xl animate-fade-in">
+                    {/* Modern Secure Lock Badge */}
+                    <div className="relative mb-6">
+                      <div className="absolute inset-0 bg-[#D4AF37]/10 rounded-full blur-xl opacity-60 animate-pulse"></div>
+                      <div className="relative h-20 w-20 rounded-full bg-stone-50 border border-stone-200 flex items-center justify-center shadow-xs">
+                        <div className="h-16 w-16 rounded-full bg-amber-50/50 border border-amber-100 flex items-center justify-center">
+                          <Lock className="text-[#917118] w-7 h-7" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <h4 className="text-base font-bold text-stone-900 tracking-wide uppercase mb-1">
                       Lampiran Dokumen: {fileLabel}
                     </h4>
-                    <p className="text-xs text-stone-500 font-mono mb-4 break-all">
+                    <span className="text-[10px] text-stone-500 font-mono mb-6 bg-stone-100 border border-stone-200 px-3 py-1 rounded-full max-w-sm truncate inline-block">
                       {page.fileName}
-                    </p>
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left space-y-2 max-w-md shadow-3xs">
-                      <p className="text-xs text-amber-900 font-bold leading-relaxed">
-                        ⚠️ Berkas Tersimpan di Google Drive Akun Lain / Mengalami Kendala Akses
-                      </p>
-                      <p className="text-[11px] text-amber-800 leading-relaxed">
-                        Akun Google Drive aktif Anda saat ini tidak memiliki hak akses langsung ke file ID dokumen dari pengunggah asal.
-                      </p>
-                      <p className="text-[11px] text-amber-800 leading-relaxed font-medium pt-1 border-t border-amber-200">
-                        Solusi Mudah: Hubungkan akun Google Drive Anda atau klik tombol salin berikut untuk menyimpannya ke Drive Anda agar dapat ditampilkan otomatis.
-                      </p>
+                    </span>
 
+                    {/* Classy Corporate Notification Box */}
+                    <div className="bg-white border border-stone-250 border-t-4 border-t-[#D4AF37] rounded-2xl p-6 text-left max-w-md shadow-sm space-y-4">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-[#917118] shrink-0 mt-0.5">
+                          <ShieldAlert size={18} />
+                        </div>
+                        <div className="space-y-1">
+                          <h5 className="text-[11px] font-extrabold text-stone-900 tracking-wide uppercase">
+                            Proteksi Dokumen Google Drive
+                          </h5>
+                          <p className="text-[11px] text-stone-600 leading-relaxed">
+                            Akun aktif Anda saat ini belum memiliki hak akses langsung atau otorisasi penuh untuk menampilkan berkas ini dari pihak pengunggah asal.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-stone-50 rounded-xl p-3.5 border border-stone-200 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]"></div>
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-stone-500 font-mono">Langkah Solusi</span>
+                        </div>
+                        <p className="text-[11px] text-stone-600 leading-relaxed font-medium">
+                          Silakan tautkan akun Google Drive Anda atau lakukan penyalinan berkas secara instan ke Drive pribadi Anda demi kenyamanan pratinjau dan pencetakan dokumen.
+                        </p>
+                      </div>
+
+                      {/* Action Interface */}
                       {(() => {
                         const file = attachmentFiles[page.fileIndex];
                         const url = file?.url || '';
@@ -1091,31 +1117,31 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                         const copying = fileId ? isCopying[fileId] : false;
 
                         return (
-                          <div className="mt-3 pt-3 border-t border-amber-200 flex flex-col sm:flex-row gap-2">
+                          <div className="pt-3 border-t border-stone-150 flex flex-col gap-2">
                             <button
                               onClick={handleConnectDriveFromWarning}
                               disabled={isConnectingDrive}
-                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white font-extrabold rounded-lg text-[10px] transition cursor-pointer shadow-3xs leading-none shrink-0"
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-850 disabled:bg-stone-300 text-white font-extrabold rounded-xl text-xs transition duration-150 shadow-3xs cursor-pointer"
                             >
-                              <Cloud size={11} className="text-[#D4AF37]" />
-                              <span>{isConnectedToDrive ? 'Ganti/Hubungkan Akun GDrive' : 'Hubungkan Akun Google Drive'}</span>
+                              <Cloud size={14} className="text-[#D4AF37]" />
+                              <span>{isConnectedToDrive ? 'Ganti Otorisasi Google Drive' : 'Hubungkan Akun Google Drive'}</span>
                             </button>
 
                             {fileId && (
                               <button
                                 onClick={() => handleCopyFileToMyDrive(url, file.name)}
                                 disabled={copying}
-                                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-stone-200 text-white font-extrabold rounded-lg text-[10px] transition cursor-pointer shadow-3xs leading-none"
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#D4AF37] hover:bg-[#Bca031] disabled:bg-stone-200 disabled:text-stone-400 text-stone-900 font-extrabold rounded-xl text-xs transition duration-150 shadow-3xs cursor-pointer"
                               >
                                 {copying ? (
                                   <>
-                                    <Loader2 size={11} className="animate-spin" />
-                                    <span>Menyalin...</span>
+                                    <Loader2 size={13} className="animate-spin text-stone-900" />
+                                    <span>Menyalin Dokumen...</span>
                                   </>
                                 ) : (
                                   <>
-                                    <Cloud size={11} />
-                                    <span>Salin ke Drive Saya (Bisa Tampil)</span>
+                                    <Cloud size={13} className="text-stone-900" />
+                                    <span>Salin ke GDrive Saya & Tampilkan</span>
                                   </>
                                 )}
                               </button>

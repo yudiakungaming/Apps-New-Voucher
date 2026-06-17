@@ -168,18 +168,18 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   return (
     <div className="space-y-6">
       {/* Dynamic View Layout Switcher Bar */}
-      <div className="bg-white border border-stone-250 rounded-2xl p-2 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-3xs">
-        <div className="flex flex-wrap items-center gap-1.5 p-0.5 bg-stone-50 rounded-xl border border-stone-100">
+      <div className="bg-white border border-stone-200 rounded-2xl p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-stone-50 rounded-xl border border-stone-100">
           <button
             onClick={() => setLayoutMode('standard')}
-            className={`flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
               layoutMode === 'standard'
-                ? 'bg-stone-900 text-white shadow-xs font-black'
-                : 'bg-transparent text-stone-500 hover:text-stone-850 hover:bg-stone-150/50'
+                ? 'bg-stone-900 text-white shadow-sm font-extrabold font-display'
+                : 'bg-transparent text-stone-500 hover:text-stone-850 hover:bg-stone-150/40'
             }`}
           >
-            <Database size={13} className={layoutMode === 'standard' ? 'text-[#D4AF37]' : ''} />
-            <span>Tampilan Standar (Metrik & List)</span>
+            <Database size={13} className={layoutMode === 'standard' ? 'text-gold-dynamic' : ''} />
+            <span>Tampilan Standar</span>
           </button>
           
           <button
@@ -187,79 +187,89 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
               setLayoutMode('spreadsheet');
               setActiveSheetTab('Data Sinkron');
             }}
-            className={`flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
               layoutMode === 'spreadsheet'
-                ? 'bg-emerald-700 text-white shadow-xs font-black'
+                ? 'bg-emerald-800 text-white shadow-sm font-extrabold font-display'
                 : 'bg-transparent text-stone-500 hover:text-emerald-700 hover:bg-emerald-50/40'
             }`}
           >
             <FileText size={13} className={layoutMode === 'spreadsheet' ? 'text-white' : ''} />
-            <span>Tampilan Spreadsheet (Excel / Google Sheets)</span>
+            <span>Tampilan Spreadsheet</span>
           </button>
 
           <button
             onClick={() => setLayoutMode('audit_logs')}
-            className={`flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
               layoutMode === 'audit_logs'
-                ? 'bg-[#917118] text-white shadow-xs font-black'
-                : 'bg-transparent text-stone-500 hover:text-[#917118] hover:bg-stone-150/50'
+                ? 'bg-[#917118] text-white shadow-sm font-extrabold font-display'
+                : 'bg-transparent text-stone-500 hover:text-[#917118] hover:bg-stone-150/40'
             }`}
           >
             <History size={13} className={layoutMode === 'audit_logs' ? 'text-white' : ''} />
-            <span>Log Riwayat Audit (Aktivitas)</span>
+            <span>Riwayat Audit</span>
           </button>
         </div>
         
-        <div className="flex items-center gap-2 text-right pr-2">
+        <div className="flex items-center gap-2 text-right pr-2 select-none">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="text-[11px] font-mono font-bold text-stone-400">
-            Internal Ledger Database: <span className="text-emerald-600 font-sans font-black">TERKONEKSI SINKRON</span>
+          <span className="text-[10px] font-mono font-bold text-stone-400 uppercase tracking-widest">
+            Internal Ledger Database: <span className="text-emerald-600 font-sans font-black">Online / Sinkron</span>
           </span>
         </div>
       </div>
 
       {/* KPI Cards */}
       {layoutMode === 'standard' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <div className="bg-[#1C1C1E] text-white p-5 rounded-2xl shadow-sm border border-neutral-800 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-xs text-stone-400 font-mono tracking-wider uppercase">Total Pengajuan</span>
-              <div className="text-3xl font-bold font-sans tracking-tight">{stats.totalCount} <span className="text-sm font-normal text-stone-400">Data</span></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1 - Midnight Gold Accent */}
+          <div className="relative overflow-hidden bg-stone-900 text-white p-6 rounded-2xl shadow-xs border border-stone-850 flex items-center justify-between group">
+            <div className="absolute right-0 top-0 w-24 h-24 rounded-full blur-2xl transition-all group-hover:scale-125 opacity-25" style={{ backgroundColor: 'var(--brand-gold)' }}></div>
+            <div className="space-y-1 relative z-10 font-display">
+              <span className="text-[10px] text-stone-400 font-mono tracking-widest uppercase block">Total Pengajuan</span>
+              <div className="text-3xl font-black tracking-tight text-white">
+                {stats.totalCount} <span className="text-xs font-medium text-stone-400 font-sans uppercase">Voucher</span>
+              </div>
             </div>
-            <div className="p-3 bg-neutral-800 rounded-xl text-amber-500">
+            <div className="p-3 bg-stone-800 rounded-xl text-gold-dynamic border border-stone-750 relative z-10">
               <Calendar size={22} />
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-stone-250 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-xs text-stone-500 font-mono tracking-wider uppercase">Total Nilai Kas keluar</span>
-              <div className="text-2xl font-bold text-stone-900 font-mono tracking-tight">Rp {formatRupiah(stats.totalAmount)}</div>
+          {/* Card 2 - Premium Pearl White */}
+          <div className="relative overflow-hidden bg-white p-6 rounded-2xl shadow-xs border border-stone-200 flex items-center justify-between group">
+            <div className="absolute right-0 top-0 w-24 h-24 bg-stone-100 rounded-full blur-2xl transition-all group-hover:scale-125"></div>
+            <div className="space-y-1 relative z-10">
+              <span className="text-[10px] text-stone-500 font-mono tracking-widest uppercase block">Total Nilai Kas Keluar</span>
+              <div className="text-2xl font-black text-stone-900 font-mono tracking-tight">
+                Rp {formatRupiah(stats.totalAmount)}
+              </div>
             </div>
-            <div className="p-3 bg-stone-100 rounded-xl text-stone-700">
-              <DollarSign size={22} />
+            <div className="p-3 bg-stone-50 rounded-xl text-stone-700 border border-stone-150 relative z-10">
+              <DollarSign size={22} className="text-[#917118]" />
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-stone-250 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-xs text-stone-500 font-mono tracking-wider uppercase">Klasifikasi Pembayaran</span>
-              <div className="text-xs space-y-1 font-mono">
+          {/* Card 3 - Corporate Summary */}
+          <div className="relative overflow-hidden bg-white p-6 rounded-2xl shadow-xs border border-stone-205 flex items-center justify-between group">
+            <div className="absolute right-0 top-0 w-24 h-24 bg-stone-100 rounded-full blur-2xl transition-all group-hover:scale-125"></div>
+            <div className="space-y-1 relative z-10 w-full">
+              <span className="text-[10px] text-stone-500 font-mono tracking-widest uppercase block">Klasifikasi Pembayaran</span>
+              <div className="text-xs space-y-1.5 font-mono pt-1">
                 <div className="flex justify-between gap-4">
-                  <span className="text-stone-500">Tunai:</span>
-                  <span className="font-semibold text-stone-800">Rp {formatRupiah(methodStats.tunai)}</span>
+                  <span className="text-stone-450">Tunai:</span>
+                  <span className="font-bold text-stone-800">Rp {formatRupiah(methodStats.tunai)}</span>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-stone-500">Cek / Transfer:</span>
-                  <span className="font-semibold text-stone-800">Rp {formatRupiah(methodStats.transfer)}</span>
+                  <span className="text-stone-450">Cek / Transfer:</span>
+                  <span className="font-bold text-stone-800">Rp {formatRupiah(methodStats.transfer)}</span>
                 </div>
               </div>
             </div>
-            <div className="p-3 bg-stone-100 rounded-xl text-stone-750">
-              <MapPin size={22} />
+            <div className="p-3 bg-stone-50 rounded-xl text-stone-700 border border-stone-150 shrink-0 relative z-10">
+              <MapPin size={22} className="text-stone-500" />
             </div>
           </div>
         </div>
@@ -330,7 +340,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
             <button
               onClick={onAddNew}
               id="btn-add-new-submission"
-              className="flex items-center justify-center gap-2 bg-[#D4AF37] hover:bg-[#Bca031] text-stone-900 font-bold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300 cursor-pointer text-xs"
+              className="flex items-center justify-center gap-2 bg-gold-dynamic hover:bg-gold-dynamic-hover text-stone-900 font-extrabold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300 cursor-pointer text-xs font-display tracking-wide"
             >
               <Plus size={16} />
               <span>Input Pengajuan Baru</span>
@@ -342,17 +352,17 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       {/* Main Content Layout Block: Standard List vs Google Sheets Simulator */}
       {layoutMode === 'standard' ? (
         /* Standard Table View */
-        <div className="bg-white rounded-2xl border border-stone-250 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-mono text-xs uppercase tracking-wider">
-                  <th className="py-4 px-6 font-medium">Tanggal</th>
-                  <th className="py-4 px-6 font-medium">Lokasi & Kode</th>
-                  <th className="py-4 px-6 font-medium">Jenis Pengajuan</th>
-                  <th className="py-4 px-6 font-medium">Penerima Kas</th>
-                  <th className="py-4 px-6 font-medium text-right">Total Nilai</th>
-                  <th className="py-4 px-6 font-medium text-center">Tindakan</th>
+                <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-display text-[10px] uppercase tracking-widest font-extrabold">
+                  <th className="py-4.5 px-6">Tanggal</th>
+                  <th className="py-4.5 px-6">Lokasi & Kode</th>
+                  <th className="py-4.5 px-6">Jenis Pengajuan</th>
+                  <th className="py-4.5 px-6">Penerima Kas</th>
+                  <th className="py-4.5 px-6 text-right">Total Nilai</th>
+                  <th className="py-4.5 px-6 text-center">Tindakan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 text-stone-800 text-sm">
@@ -361,42 +371,42 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                     const subTotal = sub.items.reduce((sum, i) => sum + i.total, 0);
                     return (
                       <tr key={sub.id} className="hover:bg-stone-50/50 transition">
-                        <td className="py-4 px-6 whitespace-nowrap">
-                          <div className="font-medium text-stone-900">
+                        <td className="py-4.5 px-6 whitespace-nowrap">
+                          <div className="font-extrabold text-stone-900">
                             {formatDateIndonesian(sub.tanggal)}
                           </div>
                           <div className="text-xs text-stone-400 font-mono mt-0.5">{sub.tanggal}</div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="font-medium text-stone-850 flex items-center gap-1">
+                        <td className="py-4.5 px-6">
+                          <div className="font-extrabold text-stone-800 flex items-center gap-1">
                             <MapPin size={13} className="text-stone-400" />
                             {sub.lokasi}
                           </div>
-                          <span className="inline-block mt-1 font-mono text-xs bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded">
+                          <span className="inline-block mt-1 font-mono text-[10px] font-bold bg-stone-100 text-stone-600 px-2 py-0.5 rounded-sm border border-stone-200">
                             Kode: {sub.kode}
                           </span>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="font-medium text-stone-900">{sub.jenisPengajuan}</div>
+                        <td className="py-4.5 px-6">
+                          <div className="font-extrabold text-stone-900">{sub.jenisPengajuan}</div>
                           <div className="text-xs text-stone-500 mt-0.5 font-mono">
                             {sub.items.length} Item pengeluaran
                           </div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="font-semibold text-stone-900">{sub.dibayarkanKepada}</div>
+                        <td className="py-4.5 px-6">
+                          <div className="font-extrabold text-stone-900">{sub.dibayarkanKepada}</div>
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            <span className={`inline-block text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                            <span className={`inline-block text-[10px] font-mono px-2.5 py-0.5 rounded-full font-extrabold ${
                               sub.dibayarkanDengan === 'Tunai'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-150'
+                                : 'bg-indigo-50 text-indigo-700 border border-indigo-150'
                             }`}>
                               {sub.dibayarkanDengan}
                             </span>
                             
-                            <span className={`inline-block text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                            <span className={`inline-block text-[10px] font-mono px-2.5 py-0.5 rounded-full font-extrabold ${
                               (sub.status || (sub.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas')) === 'Lunas'
-                                ? 'bg-teal-50 text-teal-700 border border-teal-100'
-                                : 'bg-rose-50 text-rose-700 border border-rose-100'
+                                ? 'bg-teal-50 text-teal-700 border border-teal-150'
+                                : 'bg-rose-50 text-rose-700 border border-rose-150'
                             }`}>
                               {sub.status || (sub.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas')}
                             </span>
@@ -407,7 +417,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                                 target="_blank"
                                 rel="noreferrer"
                                 title={`Lampiran: ${sub.googleDriveFileName || 'Buka di Drive'}`}
-                                className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full hover:bg-amber-100 transition font-mono font-bold"
+                                className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-850 border border-amber-200 px-2.5 py-0.5 rounded-full hover:bg-amber-100 transition font-mono font-bold"
                               >
                                 <Cloud size={10} className="text-amber-600" />
                                 Drive
@@ -415,16 +425,16 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                             )}
                           </div>
                         </td>
-                        <td className="py-4 px-6 text-right font-mono font-semibold text-stone-900">
+                        <td className="py-4.5 px-6 text-right font-mono font-extrabold text-stone-900">
                           Rp {formatRupiah(subTotal)}
                         </td>
-                        <td className="py-4 px-6 text-center">
+                        <td className="py-4.5 px-6 text-center">
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               title="Tampilkan / Cetak PDF"
                               onClick={() => onSelect(sub)}
                               id={`btn-view-${sub.id}`}
-                              className="p-1.5 hover:bg-stone-100 text-[#D4AF37] hover:text-[#Bca031] rounded-lg transition"
+                              className="p-2 hover:bg-stone-50 border border-transparent hover:border-stone-200 text-[#D4AF37] hover:text-[#Bca031] rounded-xl transition cursor-pointer shadow-3xs"
                             >
                               <Eye size={17} />
                             </button>
@@ -433,7 +443,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                               title="Duplikat Data"
                               onClick={() => onDuplicate(sub)}
                               id={`btn-dup-${sub.id}`}
-                              className="p-1.5 hover:bg-stone-100 text-stone-500 hover:text-stone-800 rounded-lg transition"
+                              className="p-2 hover:bg-stone-50 border border-transparent hover:border-stone-200 text-stone-500 hover:text-stone-850 rounded-xl transition cursor-pointer shadow-3xs"
                             >
                               <Copy size={16} />
                             </button>
@@ -442,7 +452,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                               title="Edit Data"
                               onClick={() => onEdit(sub)}
                               id={`btn-edit-${sub.id}`}
-                              className="p-1.5 hover:bg-stone-100 text-sky-500 hover:text-sky-700 rounded-lg transition"
+                              className="p-2 hover:bg-stone-50 border border-transparent hover:border-stone-200 text-sky-500 hover:text-sky-750 rounded-xl transition cursor-pointer shadow-3xs"
                             >
                               <Edit2 size={16} />
                             </button>
@@ -455,7 +465,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                                 }
                               }}
                               id={`btn-delete-${sub.id}`}
-                              className="p-1.5 hover:bg-stone-100 text-rose-500 hover:text-rose-700 rounded-lg transition"
+                              className="p-2 hover:bg-rose-50 border border-transparent hover:border-rose-150 text-rose-500 hover:text-rose-700 rounded-xl transition cursor-pointer shadow-3xs"
                             >
                               <Trash2 size={16} />
                             </button>

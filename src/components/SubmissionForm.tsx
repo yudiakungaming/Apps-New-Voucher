@@ -912,23 +912,26 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-stone-250 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-stone-205 shadow-sm overflow-hidden">
+      {/* Top Gold Corporate Accent Line on Form Card */}
+      <div className="h-[3px] border-header-gradient w-full"></div>
+      
       {/* Form Header */}
-      <div className="px-6 py-5 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="px-6 py-5.5 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
+        <div className="flex items-center gap-3.5">
           <button
             type="button"
             onClick={onCancel}
             id="btn-form-back"
-            className="p-1.5 hover:bg-stone-200 text-stone-500 hover:text-stone-850 rounded-lg transition"
+            className="p-2 hover:bg-stone-150 border border-transparent hover:border-stone-250 text-stone-550 hover:text-stone-900 rounded-xl transition cursor-pointer shadow-3xs"
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={17} />
           </button>
-          <h2 className="text-lg font-bold text-stone-900">
-            {initialSubmission ? 'Edit Data Pengajuan HO / Kas' : 'Buat Input Pengajuan Baru'}
+          <h2 className="text-base sm:text-lg font-black font-display text-stone-900 uppercase tracking-wide">
+            {initialSubmission ? 'Edit Data Pengajuan HO' : 'Input Pengajuan Baru'}
           </h2>
         </div>
-        <div className="text-xs text-stone-500 font-mono">
+        <div className="text-[10px] text-stone-400 font-mono uppercase tracking-wider font-extrabold select-none">
           {userProfile?.companyName || 'PT. Nusantara Mineral Sukses Abadi'}
         </div>
       </div>

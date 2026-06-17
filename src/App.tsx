@@ -22,9 +22,25 @@ import {
   logoutFromFirebase,
   saveActivityLogToFirestore
 } from './firebase';
-import { Database, FileText, CheckSquare, ShieldCheck, Heart, Cloud } from 'lucide-react';
+import { Database, FileText, CheckSquare, ShieldCheck, Heart, Cloud, Palette } from 'lucide-react';
 
 export default function App() {
+  const [theme, setTheme] = useState<'classic' | 'gold-dark' | 'emerald' | 'slate'>(() => {
+    try {
+      return (localStorage.getItem('NUSANTARA_THEME') as any) || 'classic';
+    } catch (e) {
+      return 'classic';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('NUSANTARA_THEME', theme);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [theme]);
+
   const [submissions, setSubmissions] = useState<Submission[]>(() => {
     try {
       const stored = localStorage.getItem('NUSANTARA_HO_SUBMISSIONS');
@@ -434,13 +450,13 @@ export default function App() {
 
   if (isIndividualUploaderView) {
     return (
-      <div id="app-root" className="min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased">
+      <div id="app-root" className={`min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased theme-${theme}`}>
         <header className="bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs print:hidden">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between min-h-18 py-2 md:py-0">
               <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateTo('/')}>
-                <div className="p-2.5 bg-stone-100 rounded-xl text-stone-800">
-                  <Database size={20} className="text-[#D4AF37]" />
+                <div className="p-2.5 bg-stone-100 rounded-xl text-stone-850">
+                  <Database size={20} className="text-gold-dynamic" />
                 </div>
                 <div className="space-y-0.5">
                   <span className="font-mono text-xs uppercase tracking-wider text-stone-400 font-bold block">
@@ -452,35 +468,69 @@ export default function App() {
                 </div>
               </div>
 
-              {/* User Info & Logout Button for Finance View */}
-              {authUser && (
-                <div className="flex items-center gap-3">
-                  <div 
-                    onClick={() => setIsProfileOpen(true)}
-                    className="flex flex-col items-end py-1 hover:bg-stone-50 border border-transparent hover:border-stone-250 px-3 py-1.5 rounded-2xl transition cursor-pointer select-none"
-                    title="Klik untuk membuka menu profil & penyimpanan"
-                  >
-                    <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
-                      <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
-                      <span className="truncate max-w-[150px] sm:max-w-[200px] font-sans font-black text-stone-900">
-                        {userProfile ? userProfile?.fullName : authUser?.email}
+              {/* Quick Theme Selector Control */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Palette size={14} className="text-stone-405 text-stone-400" />
+                  <span className="text-[9px] font-mono font-bold text-stone-400 uppercase tracking-widest hidden sm:inline-block">TEMA:</span>
+                  <div className="flex items-center gap-1.5 bg-stone-100 border border-stone-200 px-2 py-1.5 rounded-xl shadow-3xs hover:shadow-2xs transition select-none">
+                    <button
+                      onClick={() => setTheme('classic')}
+                      title="Classic Pearl Light"
+                      className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'classic' ? 'ring-2 ring-stone-900 border-white scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                      style={{ background: 'linear-gradient(135deg, #ffffff 50%, #D4AF37 50%)' }}
+                    />
+                    <button
+                      onClick={() => setTheme('gold-dark')}
+                      title="Gold in The Dark (Premium)"
+                      className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'gold-dark' ? 'ring-2 ring-amber-500 border-stone-950 scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                      style={{ background: 'linear-gradient(135deg, #141416 50%, #D4AF37 50%)' }}
+                    />
+                    <button
+                      onClick={() => setTheme('emerald')}
+                      title="Royal Emerald"
+                      className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'emerald' ? 'ring-2 ring-emerald-600 border-white scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                      style={{ background: 'linear-gradient(135deg, #f1f6f3 50%, #059669 50%)' }}
+                    />
+                    <button
+                      onClick={() => setTheme('slate')}
+                      title="Slate Minimalist"
+                      className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'slate' ? 'ring-2 ring-sky-500 border-stone-950 scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                      style={{ background: 'linear-gradient(135deg, #11141a 50%, #0284c7 50%)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* User Info & Logout Button for Finance View */}
+                {authUser && (
+                  <div className="flex items-center gap-2">
+                    <div 
+                      onClick={() => setIsProfileOpen(true)}
+                      className="flex flex-col items-end py-1 hover:bg-stone-50 border border-transparent hover:border-stone-250 px-3 py-1.5 rounded-2xl transition cursor-pointer select-none"
+                      title="Klik untuk membuka menu profil & penyimpanan"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
+                        <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
+                        <span className="truncate max-w-[120px] sm:max-w-[200px] font-sans font-black text-stone-900">
+                          {userProfile ? userProfile?.fullName : authUser?.email}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-stone-400 font-mono">
+                        {userProfile ? userProfile.role : 'Divisi Keuangan'}
                       </span>
                     </div>
-                    <span className="text-[10px] text-stone-400 font-mono">
-                      {userProfile ? userProfile.role : 'Divisi Keuangan'}
-                    </span>
+                    
+                    <button
+                      id="btn-logout-header-finance"
+                      onClick={handleLogout}
+                      className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-755 bg-rose-50 hover:bg-rose-100 border border-rose-150 rounded-lg px-2 py-1.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
+                      title="Keluar dari sesi saat ini"
+                    >
+                      <span>Logout</span>
+                    </button>
                   </div>
-                  
-                  <button
-                    id="btn-logout-header-finance"
-                    onClick={handleLogout}
-                    className="text-[9px] font-mono font-bold text-rose-600 hover:text-rose-755 bg-rose-50 hover:bg-rose-100 border border-rose-150 rounded-lg px-2 py-1.5 transition cursor-pointer shadow-3xs flex items-center gap-1"
-                    title="Keluar dari sesi saat ini"
-                  >
-                    <span>Logout</span>
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
 
             </div>
           </div>
@@ -510,7 +560,7 @@ export default function App() {
   }
 
   return (
-    <div id="app-root" className="min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased">
+    <div id="app-root" className={`min-h-screen bg-stone-50 text-stone-850 flex flex-col antialiased theme-${theme}`}>
       
       {/* GLOBAL HEADER HEADER - Hidden on print */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs print:hidden">
@@ -518,8 +568,8 @@ export default function App() {
           <div className="flex items-center justify-between min-h-18 py-2 md:py-0">
             {/* Logo area */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('list')}>
-              <div className="p-2.5 bg-stone-100 rounded-xl text-stone-800">
-                <Database size={20} className="text-[#D4AF37]" />
+              <div className="p-2.5 bg-stone-100 rounded-xl text-stone-850">
+                <Database size={20} className="text-gold-dynamic" />
               </div>
               <div className="space-y-0.5">
                 <span className="font-mono text-xs uppercase tracking-wider text-stone-400 font-bold block">
@@ -531,8 +581,39 @@ export default function App() {
               </div>
             </div>
 
-            {/* Support Info & Logout Button */}
+            {/* Quick Theme Selector Control & Support Info */}
             <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Palette size={14} className="text-stone-405 text-stone-400" />
+                <span className="text-[9px] font-mono font-bold text-stone-400 uppercase tracking-widest hidden sm:inline-block">TEMA:</span>
+                <div className="flex items-center gap-1.5 bg-stone-100 border border-stone-200 px-2 py-1.5 rounded-xl shadow-3xs hover:shadow-2xs transition select-none">
+                  <button
+                    onClick={() => setTheme('classic')}
+                    title="Classic Pearl Light"
+                    className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'classic' ? 'ring-2 ring-stone-900 border-white scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                    style={{ background: 'linear-gradient(135deg, #ffffff 50%, #D4AF37 50%)' }}
+                  />
+                  <button
+                    onClick={() => setTheme('gold-dark')}
+                    title="Gold in The Dark (Premium)"
+                    className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'gold-dark' ? 'ring-2 ring-amber-500 border-stone-950 scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                    style={{ background: 'linear-gradient(135deg, #141416 50%, #D4AF37 50%)' }}
+                  />
+                  <button
+                    onClick={() => setTheme('emerald')}
+                    title="Royal Emerald"
+                    className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'emerald' ? 'ring-2 ring-emerald-600 border-white scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                    style={{ background: 'linear-gradient(135deg, #f1f6f3 50%, #059669 50%)' }}
+                  />
+                  <button
+                    onClick={() => setTheme('slate')}
+                    title="Slate Minimalist"
+                    className={`w-3.5 h-3.5 rounded-full transition-all duration-150 transform cursor-pointer border ${theme === 'slate' ? 'ring-2 ring-sky-500 border-stone-950 scale-125 shadow-xs' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                    style={{ background: 'linear-gradient(135deg, #11141a 50%, #0284c7 50%)' }}
+                  />
+                </div>
+              </div>
+
               <div 
                 onClick={() => setIsProfileOpen(true)}
                 className="flex flex-col items-end py-1 hover:bg-stone-50 border border-transparent hover:border-stone-250 px-3 py-1.5 rounded-2xl transition cursor-pointer select-none"
@@ -540,7 +621,7 @@ export default function App() {
               >
                 <div className="flex items-center gap-1.5 text-xs font-mono text-stone-600">
                   <ShieldCheck size={14} className="text-emerald-500 shrink-0" />
-                  <span className="truncate max-w-[150px] sm:max-w-[200px] font-sans font-black text-stone-900">
+                  <span className="truncate max-w-[120px] sm:max-w-[200px] font-sans font-black text-stone-900">
                     {userProfile ? userProfile.fullName : (authUser ? authUser.email : 'Nur Wahyudi')}
                   </span>
                 </div>
