@@ -6,7 +6,7 @@ import { loadActivityLogsFromFirestore } from '../firebase';
 
 interface SubmissionsListProps {
   submissions: Submission[];
-  onSelect: (submission: Submission) => void;
+  onSelect: (submission: Submission, initialTab?: 'both' | 'pengajuan' | 'pengeluaran' | 'lampiran' | 'only_invoice_payment') => void;
   onEdit: (submission: Submission) => void;
   onDelete: (id: string) => void;
   onDuplicate: (submission: Submission) => void;
@@ -28,9 +28,13 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [jenisFilter, setJenisFilter] = useState<string>('');
   
-  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs' | 'invoice_recap'>('standard');
+  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs' | 'invoice_recap' | 'unpaid_outstanding'>('standard');
   const [activeSheetTab, setActiveSheetTab] = useState<string>('Data Sinkron');
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  // States for Unpaid/Outstanding view
+  const [unpaidSearchTerm, setUnpaidSearchTerm] = useState<string>('');
+  const [unpaidLocationFilter, setUnpaidLocationFilter] = useState<string>('All');
 
   // States for Invoice Recap view
   const [invoiceMonthFilter, setInvoiceMonthFilter] = useState<string>('All');
@@ -300,6 +304,59 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       .sort((a, b) => b.month.localeCompare(a.month)); // Sort descending
   }, [invoiceSubmissions]);
 
+  // Unpaid invoices of all time
+  const unpaidInvoicesAllTime = useMemo(() => {
+    return invoiceSubmissions.filter(sub => {
+      const isLunas = sub.buktiPembayaran || sub.googleDriveFiles?.some(f => f.isBuktiPembayaran);
+      return !isLunas;
+    });
+  }, [invoiceSubmissions]);
+
+  // ALL unpaid submissions of all time across the entire application
+  const allUnpaidSubmissionsAllTime = useMemo(() => {
+    return submissions.filter(sub => {
+      const subStatus = sub.status || (sub.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas');
+      return subStatus === 'Belum Lunas';
+    });
+  }, [submissions]);
+
+  // Filtered unpaid submissions for the "Kewajiban Belum Bayar" center
+  const filteredUnpaidSubmissions = useMemo(() => {
+    return allUnpaidSubmissionsAllTime.filter(sub => {
+      const matchSearch =
+        sub.dibayarkanKepada.toLowerCase().includes(unpaidSearchTerm.toLowerCase()) ||
+        sub.jenisPengajuan.toLowerCase().includes(unpaidSearchTerm.toLowerCase()) ||
+        sub.lokasi.toLowerCase().includes(unpaidSearchTerm.toLowerCase()) ||
+        sub.kode.toLowerCase().includes(unpaidSearchTerm.toLowerCase()) ||
+        sub.items.some(item => (item.item || '').toLowerCase().includes(unpaidSearchTerm.toLowerCase()));
+
+      const matchLocation = unpaidLocationFilter === 'All' || sub.lokasi === unpaidLocationFilter;
+      return matchSearch && matchLocation;
+    });
+  }, [allUnpaidSubmissionsAllTime, unpaidSearchTerm, unpaidLocationFilter]);
+
+  // Aggregate stats for outstanding payments
+  const unpaidOutstandingStats = useMemo(() => {
+    const totalAmount = filteredUnpaidSubmissions.reduce((sum, sub) => {
+      const subSum = sub.items.reduce((itemSum, item) => itemSum + item.total, 0);
+      return sum + subSum;
+    }, 0);
+
+    return {
+      count: filteredUnpaidSubmissions.length,
+      totalAmount,
+    };
+  }, [filteredUnpaidSubmissions]);
+
+  // Dynamic set of locations showing up in unpaid items
+  const unpaidLocations = useMemo(() => {
+    const locSet = new Set<string>();
+    allUnpaidSubmissionsAllTime.forEach(s => {
+      if (s.lokasi) locSet.add(s.lokasi);
+    });
+    return Array.from(locSet);
+  }, [allUnpaidSubmissionsAllTime]);
+
   return (
     <div className="space-y-6">
       {/* Dynamic View Layout Switcher Bar */}
@@ -355,6 +412,23 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
             <FileSpreadsheet size={13} className={layoutMode === 'invoice_recap' ? 'text-white' : ''} />
             <span>Rekap & Bukti Invoice</span>
           </button>
+
+          <button
+            onClick={() => setLayoutMode('unpaid_outstanding')}
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
+              layoutMode === 'unpaid_outstanding'
+                ? 'bg-rose-700 text-white shadow-sm font-extrabold font-display'
+                : 'bg-transparent text-stone-500 hover:text-rose-700 hover:bg-stone-150/40'
+            }`}
+          >
+            <AlertCircle size={13} className={layoutMode === 'unpaid_outstanding' ? 'text-white' : 'text-rose-500 animate-pulse'} />
+            <span className="flex items-center gap-1">Kewajiban Belum Bayar</span>
+            <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-black ${
+              layoutMode === 'unpaid_outstanding' ? 'bg-white text-rose-800' : 'bg-rose-100 text-rose-800'
+            }`}>
+              {allUnpaidSubmissionsAllTime.length}
+            </span>
+          </button>
         </div>
         
         <div className="flex items-center gap-2 text-right pr-2 select-none">
@@ -369,6 +443,30 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       </div>
 
       {/* KPI Cards */}
+      {layoutMode === 'standard' && unpaidInvoicesAllTime.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in shadow-3xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-500/20 text-amber-700 rounded-xl shrink-0 mt-0.5">
+              <AlertCircle size={16} className="text-amber-600 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-amber-900 leading-tight">Ada Tagihan/Invoice Outstanding Belum Dibayar</h4>
+              <p className="text-stone-600 text-xs mt-0.5">Sistem mendeteksi ada <strong className="text-amber-800 underline font-mono">{unpaidInvoicesAllTime.length} tagihan invoice vendor</strong> yang belum lunas/belum memiliki bukti bayar sejak awal pencatatan transaksi.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setLayoutMode('invoice_recap');
+              setInvoiceMonthFilter('All');
+              setInvoiceStatusFilter('Belum Lunas');
+            }}
+            className="px-4 py-2 bg-[#917118] hover:bg-[#7e6113] text-white font-extrabold text-xs rounded-xl transition shadow-3xs cursor-pointer select-none whitespace-nowrap self-stretch sm:self-auto text-center"
+          >
+            Lihat Semua Tagihan Belum Lunas →
+          </button>
+        </div>
+      )}
+
       {layoutMode === 'standard' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Card 1 - Midnight Gold Accent */}
@@ -1163,16 +1261,49 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                 </div>
 
                 <div className="space-y-1.5 pt-1.5 border-t border-stone-150/60">
+                  {/* Dedicated Halaman Belum Bayar button */}
                   <button
-                    onClick={() => setInvoiceMonthFilter('All')}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl transition ${
-                      invoiceMonthFilter === 'All'
-                        ? 'bg-amber-600 text-white font-extrabold'
-                        : 'bg-stone-50 text-stone-700 hover:bg-stone-100 hover:text-stone-900 border border-stone-150'
+                    onClick={() => {
+                      setInvoiceMonthFilter('All');
+                      setInvoiceStatusFilter('Belum Lunas');
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-black rounded-xl transition border cursor-pointer select-none ${
+                      invoiceMonthFilter === 'All' && invoiceStatusFilter === 'Belum Lunas'
+                        ? 'bg-amber-500 border-amber-600 text-stone-950 font-black shadow-sm'
+                        : 'bg-amber-50/70 hover:bg-amber-100 text-amber-900 border-amber-200/50'
+                    }`}
+                    title="Klik untuk memfilter semua transaksi tagihan/invoice yang belum dibayar sejak awal."
+                  >
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <AlertCircle size={13} className={invoiceMonthFilter === 'All' && invoiceStatusFilter === 'Belum Lunas' ? 'text-stone-950' : 'text-amber-600'} />
+                      Halaman Belum Bayar
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold font-mono ${
+                      invoiceMonthFilter === 'All' && invoiceStatusFilter === 'Belum Lunas'
+                        ? 'bg-stone-950/20 text-stone-950'
+                        : 'bg-amber-600/15 text-amber-800 font-extrabold'
+                    }`}>
+                      {unpaidInvoicesAllTime.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setInvoiceMonthFilter('All');
+                      setInvoiceStatusFilter('All');
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl transition cursor-pointer select-none border ${
+                      invoiceMonthFilter === 'All' && invoiceStatusFilter === 'All'
+                        ? 'bg-[#917118] border-[#917118] text-white font-extrabold shadow-3xs'
+                        : 'bg-stone-50 text-stone-700 hover:bg-stone-100 hover:text-stone-900 border-stone-150'
                     }`}
                   >
-                    <span>📅 Semua Transaksi</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-200/50 text-stone-800 font-bold font-mono">
+                    <span>📅 Semua Transaksi (All)</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold font-mono ${
+                      invoiceMonthFilter === 'All' && invoiceStatusFilter === 'All'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-stone-200/50 text-stone-800'
+                    }`}>
                       {invoiceSubmissions.length}
                     </span>
                   </button>
@@ -1228,8 +1359,21 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                 {/* Search & Filter section header */}
                 <div className="px-6 py-4.5 bg-stone-50 border-b border-stone-150 flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
                   <div className="space-y-0.5">
-                    <span className="text-xs uppercase font-mono tracking-widest text-[#a58421] font-bold">Tabel Transaksi Utama</span>
-                    <h3 className="text-sm font-black text-stone-900">Daftar Transaksi Invoice Aktif</h3>
+                    <span className="text-xs uppercase font-mono tracking-widest text-[#a58421] font-bold">
+                      {invoiceMonthFilter === 'All' && invoiceStatusFilter === 'Belum Lunas'
+                        ? '📂 Ringkasan Tagihan Outstanding'
+                        : 'Tabel Transaksi Utama'}
+                    </span>
+                    <h3 className="text-sm font-black text-stone-900 flex items-center gap-1.5">
+                      {invoiceMonthFilter === 'All' && invoiceStatusFilter === 'Belum Lunas' ? (
+                        <>
+                          <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
+                          <span>Tagihan Belum Dibayar (Semuawaktu)</span>
+                        </>
+                      ) : (
+                        <span>Daftar Transaksi Invoice Aktif</span>
+                      )}
+                    </h3>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2.5">
@@ -1430,13 +1574,13 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                                   <button
                                     onClick={() => {
                                       // Focus select and print it directly
-                                      onSelect(sub);
+                                      onSelect(sub, 'only_invoice_payment');
                                       setTimeout(() => {
                                         window.print();
                                       }, 500);
                                     }}
                                     className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg transition border border-amber-250 shadow-3xs"
-                                    title="Cetak Bukti Voucher & File Transaksi"
+                                    title="Cetak Hanya Berkas Invoice & Bukti Bayar"
                                   >
                                     <Printer size={12} />
                                   </button>
@@ -1516,6 +1660,347 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                       <p className="text-stone-500 uppercase text-[9px] mb-12">DISETUJUI OLEH (DIREKTUR UTAMA)</p>
                       <strong>{submissions[0]?.disetujuiOleh2 || 'H. A. Nursyam Halid'}</strong>
                       <p className="text-[10px] text-stone-400">Direktur Utama</p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      ) : layoutMode === 'unpaid_outstanding' ? (
+        /* Dedicated KPI & Outstanding Payments Center View */
+        <div className="space-y-6">
+          {/* Header Panel */}
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in print:hidden">
+            <div className="space-y-1.5 animate-slide-in">
+              <div className="flex items-center gap-2">
+                <div className="p-2.5 bg-rose-50 rounded-xl text-rose-700">
+                  <AlertCircle size={22} className="animate-pulse" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-stone-900 tracking-tight font-display uppercase font-mono">Pusat Kewajiban Pembayaran</h2>
+                  <p className="text-xs text-stone-500">Memonitoring, menyaring, dan mengekspor seluruh transaksi voucher pengeluaran yang berstatus belum lunas.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 px-4.5 py-2.5 hover:bg-stone-100 border border-stone-250 text-stone-800 font-extrabold rounded-xl transition duration-150 text-xs shadow-3xs cursor-pointer select-none"
+                title="Cetak Laporan Kewajiban Pembayaran ke PDF"
+              >
+                <Printer size={14} className="text-rose-600" />
+                <span>Cetak Laporan Pembayaran (PDF)</span>
+              </button>
+              
+              <button
+                onClick={onAddNew}
+                className="inline-flex items-center gap-2 px-4.5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white font-extrabold rounded-xl transition duration-150 text-xs shadow-xs cursor-pointer select-none"
+              >
+                <Plus size={14} className="text-[#D4AF37]" />
+                <span>Input Transaksi Baru</span>
+              </button>
+            </div>
+          </div>
+
+          {/* PRINT-ONLY HEADER AND FORMAL REPORT ACCENT - ONLY OUTDOES ON PAPER PRINTING */}
+          <div className="hidden print:block font-sans text-black p-2 space-y-4">
+            <div className="border-b-2 border-stone-900 pb-3 flex justify-between items-end">
+              <div>
+                <h1 className="text-lg font-bold font-display uppercase tracking-wider">PT NUSANTARA MINERAL SUKSES ABADI</h1>
+                <p className="text-[10px] text-stone-500 font-mono">DIVISI FINANCE & INTERNAL LEDGER DATABASE</p>
+                <h2 className="text-xs font-semibold text-stone-850 mt-0.5">Laporan Kewajiban Pembayaran (Outstanding Ledger)</h2>
+              </div>
+              <div className="text-right font-mono text-[9px] text-stone-500">
+                <p>Dicetak pada: {new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                <p>Status: BELUM LUNAS (OUTSTANDING)</p>
+                {unpaidLocationFilter !== 'All' && <p>Sektor Lokasi: {unpaidLocationFilter}</p>}
+              </div>
+            </div>
+
+            {/* Print KPIs */}
+            <div className="grid grid-cols-2 gap-4 border border-stone-300 p-2.5 rounded-lg font-mono text-[11px]">
+              <div>
+                <span className="text-stone-500 uppercase block text-[8px]">Total Kewajiban</span>
+                <strong>{unpaidOutstandingStats.count} Item Tagihan / Voucher</strong>
+              </div>
+              <div>
+                <span className="text-stone-500 uppercase block text-[8px]">Total Nominal Harus Dibayar (Outstanding)</span>
+                <strong>Rp {unpaidOutstandingStats.totalAmount.toLocaleString('id-ID')}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Metrics Columns (KPIs) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 print:hidden">
+            <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-3xs flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] text-stone-400 font-mono tracking-widest uppercase block">Total Voucher Outstanding</span>
+                <div className="text-2xl font-black text-stone-900 font-display">
+                  {unpaidOutstandingStats.count} <span className="text-xs font-medium text-stone-500 uppercase tracking-wide">Transaksi</span>
+                </div>
+                <span className="text-[10px] text-rose-500 font-bold font-mono">Belum Lunas & Memerlukan Pembayaran</span>
+              </div>
+              <div className="p-3 bg-rose-50 rounded-xl text-rose-600">
+                <AlertCircle size={20} />
+              </div>
+            </div>
+
+            <div className="bg-stone-900 text-white p-5 rounded-2xl border border-stone-850 shadow-3xs flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] text-stone-400 font-mono tracking-widest uppercase block font-bold text-[#D4AF37]">Total Dana Outstanding</span>
+                <div className="text-2xl font-black text-rose-400 font-display font-mono">
+                  Rp {unpaidOutstandingStats.totalAmount.toLocaleString('id-ID')}
+                </div>
+                <span className="text-[10px] text-stone-400 block font-mono">Sisa tagihan yang harus segera ditransfer/tunai</span>
+              </div>
+              <div className="p-3 bg-stone-800 rounded-xl text-amber-500 border border-stone-750">
+                <DollarSign size={20} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* LEFT COLUMN: LOCATION TABS SIDEBAR (print:hidden) */}
+            <div className="lg:col-span-1 space-y-4 print:hidden">
+              <div className="bg-white rounded-2xl border border-stone-200 p-4.5 space-y-3 shadow-3xs">
+                <div>
+                  <h3 className="text-xs font-black uppercase font-mono tracking-wider text-stone-500">Filter Sektor Lokasi</h3>
+                  <p className="text-[10.5px] text-stone-400 mt-0.5">Saring tagihan berdasarkan lokasi penambangan atau administratif.</p>
+                </div>
+
+                <div className="space-y-1.5 pt-1.5 border-t border-stone-150/60">
+                  <button
+                    onClick={() => setUnpaidLocationFilter('All')}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer border ${
+                      unpaidLocationFilter === 'All'
+                        ? 'bg-rose-750 border-rose-800 text-white font-extrabold'
+                        : 'bg-stone-50 text-stone-700 hover:bg-stone-150 border-stone-150'
+                    }`}
+                  >
+                    <span>🌐 Semua Lokasi</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold font-mono ${
+                      unpaidLocationFilter === 'All' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-600'
+                    }`}>
+                      {allUnpaidSubmissionsAllTime.length}
+                    </span>
+                  </button>
+
+                  {unpaidLocations.map((loc) => {
+                    const countLoc = allUnpaidSubmissionsAllTime.filter(s => s.lokasi === loc).length;
+                    return (
+                      <button
+                        key={loc}
+                        onClick={() => setUnpaidLocationFilter(loc)}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl transition cursor-pointer border ${
+                          unpaidLocationFilter === loc
+                            ? 'bg-rose-750 border-rose-800 text-white font-extrabold'
+                            : 'bg-stone-50 text-stone-700 hover:bg-stone-150 border-stone-150'
+                        }`}
+                      >
+                        <span className="truncate pr-1">📍 {loc}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold font-mono ${
+                          unpaidLocationFilter === loc ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-600'
+                        }`}>
+                          {countLoc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Informative Help Card */}
+              <div className="p-4 bg-amber-50/70 border border-amber-200/50 rounded-2xl text-xs text-amber-900 space-y-1 shadow-3xs">
+                <span className="font-extrabold block text-amber-950 uppercase tracking-wide text-[10px]">💡 Petunjuk Untuk Finance</span>
+                <p className="text-stone-600 text-[11px] leading-relaxed">
+                  Laporan ini menunjukkan semua pengeluaran yang disetujui direksi namun belum ditransfer/dibayarkan. Gunakan tombol <strong className="text-stone-850">Cetak Laporan Pembayaran (PDF)</strong> untuk mencetak rekap fisik terverifikasi bagi pimpinan/petugas kas.
+                </p>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: MAIN TABLE VIEW AND TRANSACTIONS */}
+            <div className="lg:col-span-3 space-y-4">
+              <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden select-none">
+                {/* Search & Filter table header */}
+                <div className="px-6 py-4.5 bg-stone-50 border-b border-stone-150 flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+                  <div className="space-y-0.5">
+                    <span className="text-xs uppercase font-mono tracking-widest text-rose-600 font-extrabold">
+                      Outstanding Liabilities
+                    </span>
+                    <h3 className="text-sm font-black text-stone-900 flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                      <span>Daftar Transaksi Belum Selesai Lunas</span>
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Search Term Input */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={13} />
+                      <input
+                        type="text"
+                        placeholder="Cari kode, penerima, item..."
+                        className="pl-8.5 pr-3 py-1.5 w-48 sm:w-56 bg-white border border-stone-250 rounded-xl text-xs font-bold text-stone-700 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent transition"
+                        value={unpaidSearchTerm}
+                        onChange={(e) => setUnpaidSearchTerm(e.target.value)}
+                      />
+                    </div>
+
+                    {unpaidSearchTerm && (
+                      <button
+                        onClick={() => setUnpaidSearchTerm('')}
+                        className="text-[10px] px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-600 font-extrabold transition font-mono"
+                      >
+                        RESET
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Table Data */}
+                <div className="overflow-x-auto print:hidden">
+                  {filteredUnpaidSubmissions.length > 0 ? (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-stone-50/40 border-b border-stone-150 text-stone-500 font-mono text-[9px] uppercase tracking-wider font-extrabold">
+                          <th className="py-3 px-5">Voucher</th>
+                          <th className="py-3 px-5">Tanggal</th>
+                          <th className="py-3 px-5">Sektor / Lokasi</th>
+                          <th className="py-3 px-5">Jenis Pengajuan & Item</th>
+                          <th className="py-3 px-5">Diberikan Kepada</th>
+                          <th className="py-3 px-5 text-right">Nilai Outstanding</th>
+                          <th className="py-3 px-5 text-center">Tindakan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 text-stone-800 text-xs">
+                        {filteredUnpaidSubmissions.map((sub) => {
+                          const subSumTotal = sub.items.reduce((s, i) => s + i.total, 0);
+                          return (
+                            <tr key={sub.id} className="hover:bg-stone-50/50 transition">
+                              <td className="py-3 px-5 whitespace-nowrap font-bold font-mono text-stone-900">
+                                {sub.kode}
+                              </td>
+                              <td className="py-3 px-5 whitespace-nowrap font-bold text-stone-600">
+                                {sub.tanggal}
+                              </td>
+                              <td className="py-3 px-5 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 bg-stone-100 text-stone-700 px-2 py-0.5 rounded-sm border border-stone-200 font-mono text-[10px] font-bold">
+                                  {sub.lokasi}
+                                </span>
+                              </td>
+                              <td className="py-3 px-5">
+                                <div className="font-extrabold text-stone-900 truncate max-w-[170px]" title={sub.jenisPengajuan}>
+                                  {sub.jenisPengajuan}
+                                </div>
+                                <div className="text-[10px] text-stone-400 mt-0.5 truncate max-w-[170px]" title={getIsiInvoice(sub)}>
+                                  {getIsiInvoice(sub)}
+                                </div>
+                              </td>
+                              <td className="py-3 px-5 whitespace-nowrap font-medium text-stone-900">
+                                {sub.dibayarkanKepada}
+                                <div className="text-[9px] font-mono text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-md px-1 py-0.2 mt-0.5 inline-block ml-1">
+                                  {sub.dibayarkanDengan}
+                                </div>
+                              </td>
+                              <td className="py-3 px-5 text-right font-bold text-rose-700 font-mono whitespace-nowrap">
+                                Rp {formatRupiah(subSumTotal)}
+                              </td>
+                              <td className="py-3 px-5">
+                                <div className="flex items-center justify-center gap-1">
+                                  {/* View / Print submission detail voucher */}
+                                  <button
+                                    onClick={() => onSelect(sub)}
+                                    className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 rounded-lg transition"
+                                    title="Tinjau & Cetak Voucher F1/F2"
+                                  >
+                                    <Eye size={12} />
+                                  </button>
+
+                                  {/* Trigger upload transfer proof to PAY */}
+                                  {onOpenBuktiTransfer && (
+                                    <button
+                                      onClick={onOpenBuktiTransfer}
+                                      className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-250 rounded-lg transition font-extrabold flex items-center justify-center gap-0.5"
+                                      title="Unggah Bukti Bayar untuk Melunasi Tagihan ini"
+                                    >
+                                      <RefreshCw size={11} className="text-emerald-600" />
+                                      <span className="text-[9px]">Bayar</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="py-24 text-center space-y-2">
+                      <AlertCircle className="mx-auto text-stone-400 animate-pulse" size={32} />
+                      <div className="text-stone-850 font-bold text-xs mt-1">Saringan Kewajiban Kosong</div>
+                      <p className="text-[11px] text-stone-400 max-w-sm mx-auto">Selamat! Tidak ada transaksi outstanding/belum dibayar untuk saringan filter pencarian ini.</p>
+                      <button
+                        onClick={() => {
+                          setUnpaidLocationFilter('All');
+                          setUnpaidSearchTerm('');
+                        }}
+                        className="text-[11px] px-3 py-1 bg-stone-100 hover:bg-stone-150 rounded-lg font-bold text-stone-800 transition"
+                      >
+                        Bersihkan Saringan
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Print only detailed list table */}
+                <div className="hidden print:block font-sans text-xs pt-2">
+                  <span className="block font-mono text-[8px] font-bold uppercase text-stone-500 mb-2">Lampiran Detail Kewajiban Pembayaran (All Outstanding Liabilities)</span>
+                  <table className="w-full text-left border-collapse border border-stone-300">
+                    <thead>
+                      <tr className="bg-stone-200/50 text-stone-800 text-[8px] uppercase font-mono border-b border-stone-300">
+                        <th className="p-1 border border-stone-300">No. Voucher</th>
+                        <th className="p-1 border border-stone-300">Tanggal</th>
+                        <th className="p-1 border border-stone-300">Sektor</th>
+                        <th className="p-1 border border-stone-300">Uraian / Pekerjaan / Item</th>
+                        <th className="p-1 border border-stone-300">Vendor / Penerima Kas</th>
+                        <th className="p-1 border border-stone-350 text-right">Outstanding (Rp)</th>
+                        <th className="p-1 border border-stone-300">Cara Bayar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUnpaidSubmissions.map((sub, idx) => {
+                        const sumTotal = sub.items.reduce((s, i) => s + i.total, 0);
+                        return (
+                          <tr key={sub.id} className="border-b border-stone-300 font-mono text-[9px]">
+                            <td className="p-1 border border-stone-300 font-bold">{sub.kode}</td>
+                            <td className="p-1 border border-stone-300 whitespace-nowrap">{sub.tanggal}</td>
+                            <td className="p-1 border border-stone-300 text-center uppercase font-mono">{sub.lokasi}</td>
+                            <td className="p-1 border border-stone-300 font-sans">{sub.jenisPengajuan} - {getIsiInvoice(sub)}</td>
+                            <td className="p-1 border border-stone-300 font-sans">{sub.dibayarkanKepada}</td>
+                            <td className="p-1 border border-stone-300 text-right font-bold">Rp {sumTotal.toLocaleString('id-ID')}</td>
+                            <td className="p-1 border border-stone-300 text-center font-sans">{sub.dibayarkanDengan}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  
+                  {/* Formal signatures block for print reports */}
+                  <div className="grid grid-cols-2 gap-8 mt-12 text-center text-xs font-sans">
+                    <div>
+                      <p className="text-stone-500 uppercase text-[9px] mb-12">DIBUAT OLEH (DIVISI FINANCE)</p>
+                      <strong className="border-b border-stone-800 pb-0.5">{submissions[0]?.dibuatOleh || 'Nur Wahyudi'}</strong>
+                      <p className="text-[10px] text-stone-400 mt-0.5">Finance Department</p>
+                    </div>
+                    <div>
+                      <p className="text-stone-500 uppercase text-[9px] mb-12">DISETUJUI & DIVERIFIKASI OLEH</p>
+                      <strong className="border-b border-stone-800 pb-0.5">{submissions[0]?.disetujuiOleh2 || 'H. A. Nursyam Halid'}</strong>
+                      <p className="text-[10px] text-stone-400 mt-0.5">Direktur Utama</p>
                     </div>
                   </div>
                 </div>

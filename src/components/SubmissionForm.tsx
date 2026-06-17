@@ -1154,11 +1154,82 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           </div>
 
           {isInvoice && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-[11px] text-amber-800 animate-fade-in flex items-start gap-2">
-              <Sparkles size={14} className="text-amber-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <span className="font-bold">Transaksi Berjenis Invoice Aktif</span>
-                <p className="text-stone-500">Sistem akan otomatis merekap transaksi ini berdasarkan <strong>Kode Dokumen</strong> dan <strong>Tanggal Transaksi</strong> yang diinput di atas. Tidak memerlukan pengisian ganda yang membingungkan!</p>
+            <div className="space-y-4 pt-3 border-t border-stone-200/60 animate-fade-in">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-[11px] text-amber-800 flex items-start gap-2">
+                <Sparkles size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold">Transaksi Berjenis Invoice Aktif</span>
+                  <p className="text-stone-500">Sistem akan otomatis merekap transaksi ini berdasarkan <strong>Kode Dokumen</strong> dan <strong>Tanggal Transaksi</strong> yang diinput di atas. Tidak memerlukan pengisian ganda yang membingungkan!</p>
+                </div>
+              </div>
+
+              {/* Dedicated Upload Button and status specifically for Bukti/Dokumen Invoice */}
+              <div className="bg-stone-50/50 rounded-xl border border-stone-200 p-4 space-y-3">
+                <div className="flex items-center gap-1.5 justify-start text-[11px] font-mono font-bold uppercase tracking-wider text-stone-600">
+                  <span>📂 Berkas File Invoice Resmi Vendor</span>
+                  <span className="text-rose-500 font-extrabold">*</span>
+                </div>
+
+                {(() => {
+                  const matched = fileItems.find((itm) => itm.docType === 'invoice_vendor');
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+                      <div>
+                        {matched ? (
+                          <div className="p-3 bg-emerald-50/20 border border-emerald-250 rounded-xl flex items-center justify-between gap-3 shadow-3xs">
+                            <div className="min-w-0 flex-1">
+                              <span className="block text-xs font-bold text-emerald-800 truncate" title={matched.name}>
+                                {matched.name.includes(' - ') ? matched.name.substring(matched.name.indexOf(' - ') + 3) : matched.name}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[8px] text-emerald-600 font-bold uppercase tracking-widest font-mono mt-0.5">
+                                {matched.isDrive ? '● Terunggah di Google Drive' : '● File Lokal (Belum Disimpan)'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {matched.isDrive && matched.url && (
+                                <a
+                                  href={matched.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[9px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-250 py-1 px-2.5 rounded-lg font-bold transition flex items-center"
+                                >
+                                  Buka
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFileItem(matched.id)}
+                                className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 p-1.5 rounded-lg font-bold transition"
+                                title="Hapus berkas invoice"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-stone-400 italic bg-stone-100/50 p-3 rounded-xl border border-stone-200 border-dashed">
+                            Faktur/Berkas invoice belum terpilih. Mohon upload lampiran khusus invoice di kuadran kanan.
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col">
+                        {!matched && (
+                          <label className="cursor-pointer text-xs text-center border-2 border-dashed border-[#D4AF37]/45 hover:bg-amber-500/5 text-[#917118] hover:text-[#7d5e0d] font-black rounded-xl py-4.5 px-4 transition flex items-center justify-center gap-2 shadow-3xs">
+                            <Cloud size={15} />
+                            Klik untuk Pilih & Upload Lampiran Invoice
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="image/*,application/pdf"
+                              onChange={(e) => handleSpecificFileUpload(e, 'invoice_vendor')}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1331,10 +1402,10 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                 /* Grid 9 required documents for coal transactions */
                 <div className="space-y-3">
                   <span className="block text-[11px] font-mono font-bold text-stone-500 uppercase tracking-wider">
-                    9 Dokumen Bukti Transaksi Wajib / Utama (Batubara)
+                    {isInvoice ? 'Berkas Dokumen Pendukung Tambahan (Batubara)' : '9 Dokumen Bukti Transaksi Wajib / Utama (Batubara)'}
                   </span>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {REQUIRED_TRANSACTION_DOCS.map((doc) => {
+                    {REQUIRED_TRANSACTION_DOCS.filter(doc => isInvoice ? doc.key !== 'invoice_vendor' : true).map((doc) => {
                       const matched = fileItems.find((itm) => itm.docType === doc.key);
                       return (
                         <div

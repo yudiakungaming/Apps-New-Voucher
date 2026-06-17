@@ -9,6 +9,7 @@ interface PrintDocumentProps {
   submission: Submission;
   onBack: () => void;
   userProfile?: any;
+  initialTab?: 'both' | 'pengajuan' | 'pengeluaran' | 'lampiran' | 'only_invoice_payment';
 }
 
 const getGoogleDriveEmbedUrl = (url: string): string => {
@@ -57,8 +58,10 @@ const loadPdfJs = (): Promise<any> => {
   });
 };
 
-export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack, userProfile }) => {
-  const [activeTab, setActiveTab] = useState<'both' | 'pengajuan' | 'pengeluaran' | 'lampiran'>('both');
+export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack, userProfile, initialTab }) => {
+  const [activeTab, setActiveTab] = useState<'both' | 'pengajuan' | 'pengeluaran' | 'lampiran' | 'only_invoice_payment'>(
+    initialTab || 'both'
+  );
   const [renderedPages, setRenderedPages] = useState<RenderedPage[]>([]);
   const [isLoadingPages, setIsLoadingPages] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState('');
@@ -563,7 +566,17 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
     window.print();
   };
 
-  const totalPagesCount = 2 + renderedPages.length;
+  const visiblePages = renderedPages.filter(page => {
+    if (activeTab === 'only_invoice_payment') {
+      const fileObj = attachmentFiles[page.fileIndex];
+      return fileObj?.docType === 'invoice_vendor' || fileObj?.isBuktiPembayaran;
+    }
+    return true;
+  });
+
+  const totalPagesCount = activeTab === 'only_invoice_payment'
+    ? visiblePages.length
+    : (activeTab === 'pengajuan' || activeTab === 'pengeluaran' ? 1 : (activeTab === 'lampiran' ? renderedPages.length : 2 + renderedPages.length));
 
   return (
     <div className="space-y-6">
@@ -621,6 +634,18 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             >
               <Cloud size={13} className="text-amber-600" />
               Hanya Lampiran ({isLoadingPages ? '...' : renderedPages.length})
+            </button>
+          )}
+          {attachmentFiles.some(f => f.docType === 'invoice_vendor' || f.isBuktiPembayaran) && (
+            <button
+              onClick={() => setActiveTab('only_invoice_payment')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition ${
+                activeTab === 'only_invoice_payment' ? 'bg-amber-100 text-[#917118] border border-amber-200 shadow-3xs font-black' : 'text-stone-550 hover:text-stone-955'
+              }`}
+              title="Cetak khusus halaman berkas Invoice Vendor dan Bukti Pembayaran saja"
+            >
+              <FileText size={13} className="text-amber-600" />
+              Invoice & Bukti Bayar Saja
             </button>
           )}
         </div>
@@ -1025,8 +1050,8 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
         )}
 
         {/* ================= PAGE 3+: LAMPIRAN DOKUMEN BUKTI (DYNAMIC SEVERAL PAGES) ================= */}
-        {(activeTab === 'both' || activeTab === 'lampiran') && !isLoadingPages && renderedPages.map((page, idx) => {
-          const pageNum = 3 + idx;
+        {(activeTab === 'both' || activeTab === 'lampiran' || activeTab === 'only_invoice_payment') && !isLoadingPages && visiblePages.map((page, idx) => {
+          const pageNum = activeTab === 'only_invoice_payment' ? (1 + idx) : (3 + idx);
           const fileObj = attachmentFiles[page.fileIndex];
           const fileLabel = fileObj?.isBuktiPembayaran ? 'Bukti Bayar'
                           : fileObj?.docType === 'po' ? 'PO'

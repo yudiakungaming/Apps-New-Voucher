@@ -52,6 +52,7 @@ export default function App() {
   });
   const [view, setView] = useState<'list' | 'form' | 'print'>('list');
   const [activeSubmission, setActiveSubmission] = useState<Submission | null>(null);
+  const [printInitialTab, setPrintInitialTab] = useState<'both' | 'pengajuan' | 'pengeluaran' | 'lampiran' | 'only_invoice_payment'>('both');
   const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
   const [authUser, setAuthUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -668,8 +669,9 @@ export default function App() {
             {/* Main Listing components */}
             <SubmissionsList
               submissions={submissions}
-              onSelect={(sub) => {
+              onSelect={(sub, initialTab) => {
                 setActiveSubmission(sub);
+                setPrintInitialTab(initialTab || 'both');
                 setView('print');
               }}
               onEdit={(sub) => {
@@ -711,6 +713,7 @@ export default function App() {
           <PrintDocument
             submission={activeSubmission}
             userProfile={userProfile}
+            initialTab={printInitialTab}
             onBack={() => {
               setActiveSubmission(null);
               setView('list');
