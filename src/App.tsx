@@ -688,7 +688,7 @@ export default function App() {
             />
 
             {/* Backup / Export-Import Section */}
-            <div className="pt-4">
+            <div className="pt-4 print:hidden">
               <JsonBackup submissions={submissions} onImport={handleImportJson} />
             </div>
           </div>

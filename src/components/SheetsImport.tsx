@@ -155,7 +155,7 @@ export const SheetsImport: React.FC<SheetsImportProps> = ({ onImportSuccess, exi
   };
 
   return (
-    <div className="bg-white border border-stone-250 rounded-2xl p-5 shadow-3xs space-y-4">
+    <div className="bg-white border border-stone-250 rounded-2xl p-5 shadow-3xs space-y-4 print:hidden">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
         <div className="space-y-1">
           <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">

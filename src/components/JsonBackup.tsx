@@ -176,7 +176,7 @@ export const JsonBackup: React.FC<JsonBackupProps> = ({ submissions, onImport })
   };
 
   return (
-    <div className="bg-stone-50 border border-stone-250 rounded-2xl overflow-hidden shadow-xs">
+    <div className="bg-stone-50 border border-stone-250 rounded-2xl overflow-hidden shadow-xs print:hidden">
       {/* Accordion Trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}

@@ -426,7 +426,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   return (
     <div className="space-y-6">
       {/* Dynamic View Layout Switcher Bar */}
-      <div className="bg-white border border-stone-200 rounded-2xl p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+      <div className="bg-white border border-stone-200 rounded-2xl p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs print:hidden">
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-stone-50 rounded-xl border border-stone-100">
           <button
             onClick={() => setLayoutMode('standard')}

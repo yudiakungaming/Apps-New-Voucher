@@ -311,7 +311,7 @@ export const FirebaseSyncConfig: React.FC<FirebaseSyncConfigProps> = ({ onSyncDa
   };
 
   return (
-    <div className="bg-white border border-stone-250 rounded-2xl p-5 shadow-3xs space-y-4">
+    <div className="bg-white border border-stone-250 rounded-2xl p-5 shadow-3xs space-y-4 print:hidden">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className={`p-2.5 rounded-xl shrink-0 ${isConfigured ? 'bg-amber-50 text-[#D4AF37]' : 'bg-stone-50 text-stone-400'}`}>
