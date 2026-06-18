@@ -1246,55 +1246,122 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           </div>
         </div>
 
-        {/* SECTION KLASIFIKASI & INFORMASI INVOICE */}
-        <div className="border border-stone-200/80 rounded-2xl p-5 space-y-4 bg-stone-50/30">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* SECTION KLASIFIKASI TRANSAKSI UNIFIKASI */}
+        <div className="border border-stone-200/80 rounded-2xl p-5 space-y-5 bg-stone-50/25">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-0.5">
               <h3 className="text-xs font-black uppercase font-mono tracking-wider text-stone-600 flex items-center gap-1.5">
-                <FileText size={14} className="text-gold-dynamic" />
-                Klasifikasi Transaksi Invoice / Tagihan
+                <Sparkles size={14} className="text-gold-dynamic animate-pulse" />
+                Klasifikasi Jenis Transaksi
               </h3>
-              <p className="text-[11px] text-stone-400">Tandai jika pembayaran ini didasari invoice/billing supplier agar otomatis dicatat dalam rekap bulanan.</p>
+              <p className="text-[11px] text-stone-400 font-medium">Tentukan klasifikasi khusus transaksi ini untuk pemrosesan rekapitulasi, integrasi berkas LPJ lapangan, atau invoice secara teratur.</p>
             </div>
-            <div className="flex items-center gap-2.5 self-start sm:self-auto bg-white border border-stone-200 px-3 py-1.5 rounded-xl shadow-3xs select-none">
-              <span className="text-[11px] font-bold text-stone-700">Tipe Transaksi Invoice?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const val = !isInvoice;
-                  setIsInvoice(val);
-                  if (!val) {
+
+            {/* Selector Options (Dropdown & Buttons) */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Dropdown Menu for extensible future options */}
+              <select
+                className="px-3.5 py-1.5 bg-white border border-stone-150 rounded-xl text-xs font-bold text-stone-800 focus:outline-none focus:ring-1 focus:ring-stone-400 cursor-pointer shadow-3xs"
+                value={isInvoice ? 'invoice' : isPettyCash ? 'petty_cash' : 'standard'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'standard') {
+                    setIsInvoice(false);
                     setInvoiceNumber('');
                     setInvoiceDate('');
+                    setIsPettyCash(false);
+                    setPettyCashCustodian('');
+                    setPettyCashLocalFile(null);
+                  } else if (val === 'invoice') {
+                    setIsInvoice(true);
+                    setIsPettyCash(false);
+                    setPettyCashCustodian('');
+                    setPettyCashLocalFile(null);
+                  } else if (val === 'petty_cash') {
+                    setIsInvoice(false);
+                    setInvoiceNumber('');
+                    setInvoiceDate('');
+                    setIsPettyCash(true);
                   }
                 }}
-                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isInvoice ? 'bg-amber-500' : 'bg-stone-200'
-                }`}
               >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-3xs ring-0 transition duration-200 ease-in-out ${
-                    isInvoice ? 'translate-x-5' : 'translate-x-0'
+                <option value="standard">📁 Transaksi Standar / Umum</option>
+                <option value="invoice">📄 Tagihan / Invoice Vendor</option>
+                <option value="petty_cash">🪙 Petty Cash Lapangan</option>
+              </select>
+
+              {/* Quick Choice Buttons for rapid clicking */}
+              <div className="inline-flex rounded-xl bg-stone-100 p-0.5 border border-stone-200/60 shadow-3xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInvoice(false);
+                    setInvoiceNumber('');
+                    setInvoiceDate('');
+                    setIsPettyCash(false);
+                    setPettyCashCustodian('');
+                    setPettyCashLocalFile(null);
+                  }}
+                  className={`px-3 py-1 text-[10.5px] font-bold rounded-lg transition-all duration-155 cursor-pointer ${
+                    !isInvoice && !isPettyCash
+                      ? 'bg-white text-stone-900 shadow-3xs'
+                      : 'text-stone-500 hover:text-stone-850'
                   }`}
-                />
-              </button>
+                >
+                  Standar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInvoice(true);
+                    setIsPettyCash(false);
+                    setPettyCashCustodian('');
+                    setPettyCashLocalFile(null);
+                  }}
+                  className={`px-3 py-1 text-[10.5px] font-bold rounded-lg transition-all duration-155 cursor-pointer ${
+                    isInvoice
+                      ? 'bg-white text-amber-600 shadow-3xs'
+                      : 'text-stone-500 hover:text-stone-850'
+                  }`}
+                >
+                  Invoice
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInvoice(false);
+                    setInvoiceNumber('');
+                    setInvoiceDate('');
+                    setIsPettyCash(true);
+                  }}
+                  className={`px-3 py-1 text-[10.5px] font-bold rounded-lg transition-all duration-155 cursor-pointer ${
+                    isPettyCash
+                      ? 'bg-white text-violet-750 shadow-3xs'
+                      : 'text-stone-500 hover:text-stone-850'
+                  }`}
+                >
+                  Petty Cash
+                </button>
+              </div>
             </div>
           </div>
 
+          {/* Conditional Content rendering */}
           {isInvoice && (
-            <div className="space-y-4 pt-3 border-t border-stone-200/60 animate-fade-in">
+            <div className="space-y-4 pt-4 border-t border-stone-200/60 animate-fade-in">
               <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-[11px] text-amber-800 flex items-start gap-2">
                 <Sparkles size={14} className="text-amber-600 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
                   <span className="font-bold">Transaksi Berjenis Invoice Aktif</span>
-                  <p className="text-stone-500">Sistem akan otomatis merekap transaksi ini berdasarkan <strong>Kode Dokumen</strong> dan <strong>Tanggal Transaksi</strong> yang diinput di atas. Tidak memerlukan pengisian ganda yang membingungkan!</p>
+                  <p className="text-stone-550">Sistem akan otomatis merekap transaksi ini berdasarkan <strong>Kode Dokumen</strong> dan <strong>Tanggal Transaksi</strong> yang diinput di atas. Tidak memerlukan pengisian ganda yang membingungkan!</p>
                 </div>
               </div>
 
               {/* Dedicated Upload Button and status specifically for Bukti/Dokumen Invoice */}
-              <div className="bg-stone-50/50 rounded-xl border border-stone-200 p-4 space-y-3">
-                <div className="flex items-center gap-1.5 justify-start text-[11px] font-mono font-bold uppercase tracking-wider text-stone-600">
-                  <span>📂 Berkas File Invoice Resmi Vendor</span>
+              <div className="bg-white rounded-xl border border-stone-200 p-4 space-y-3 shadow-3xs">
+                <div className="flex items-center gap-1.5 justify-start text-[11.5px] font-mono font-black uppercase tracking-wider text-stone-700">
+                  <FileText size={13} className="text-amber-500" />
+                  <span>Lampiran Dokumen / Nota Invoice Resmi Vendor</span>
                   <span className="text-rose-500 font-extrabold">*</span>
                 </div>
 
@@ -1319,7 +1386,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                                   href={matched.url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-[9px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-250 py-1 px-2.5 rounded-lg font-bold transition flex items-center"
+                                  className="text-[9px] bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-250 py-1 px-2.5 rounded-lg font-bold transition flex items-center shadow-3xs"
                                 >
                                   Buka
                                 </a>
@@ -1327,7 +1394,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleDeleteFileItem(matched.id)}
-                                className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 p-1.5 rounded-lg font-bold transition"
+                                className="text-[9px] bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-250 p-1.5 rounded-lg font-bold transition shadow-3xs cursor-pointer"
                                 title="Hapus berkas invoice"
                               >
                                 <Trash2 size={12} />
@@ -1336,15 +1403,15 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                           </div>
                         ) : (
                           <div className="text-xs text-stone-400 italic bg-stone-100/50 p-3 rounded-xl border border-stone-200 border-dashed">
-                            Faktur/Berkas invoice belum terpilih. Mohon upload lampiran khusus invoice di kuadran kanan.
+                            Faktur/Berkas invoice belum terpilih. Silakan klik tombol di samping kanan untuk memilih berkas lampiran invoice resmi.
                           </div>
                         )}
                       </div>
 
                       <div className="flex flex-col">
                         {!matched && (
-                          <label className="cursor-pointer text-xs text-center border-2 border-dashed border-[#D4AF37]/45 hover:bg-amber-500/5 text-[#917118] hover:text-[#7d5e0d] font-black rounded-xl py-4.5 px-4 transition flex items-center justify-center gap-2 shadow-3xs">
-                            <Cloud size={15} />
+                          <label className="cursor-pointer text-xs text-center border border-dashed border-[#D4AF37]/50 hover:bg-[#D4AF37]/5 text-[#6c5513] hover:text-[#52400a] font-extrabold rounded-xl py-4 px-4 transition flex items-center justify-center gap-2 shadow-3xs">
+                            <Cloud size={15} className="text-[#D4AF37]" />
                             Klik untuk Pilih & Upload Lampiran Invoice
                             <input
                               type="file"
@@ -1361,55 +1428,27 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
               </div>
             </div>
           )}
-        </div>
-
-        {/* SECTION KLASIFIKASI & INFORMASI PETTY CASH LAPANGAN */}
-        <div className="border border-stone-200/80 rounded-2xl p-5 space-y-4 bg-stone-50/30">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <h3 className="text-xs font-black uppercase font-mono tracking-wider text-stone-600 flex items-center gap-1.5">
-                <Coins size={14} className="text-gold-dynamic" />
-                Klasifikasi Pengisian Petty Cash Lapangan
-              </h3>
-              <p className="text-[11px] text-stone-400 font-medium">Tandai jika transaksi ini merupakan Pengisian Petty Cash Lapangan oleh personil yang bertanggung jawab.</p>
-            </div>
-            <div className="flex items-center gap-2.5 self-start sm:self-auto bg-white border border-stone-200 px-3 py-1.5 rounded-xl shadow-3xs select-none">
-              <span className="text-[11px] font-bold text-stone-700">Pengisian Petty Cash Lapangan?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const val = !isPettyCash;
-                  setIsPettyCash(val);
-                  if (!val) {
-                    setPettyCashCustodian('');
-                    setPettyCashLocalFile(null);
-                  }
-                }}
-                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isPettyCash ? 'bg-amber-500' : 'bg-stone-200'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-3xs ring-0 transition duration-200 ease-in-out ${
-                    isPettyCash ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
 
           {isPettyCash && (
-            <div className="space-y-4 pt-3 border-t border-stone-200/60 animate-fade-in">
+            <div className="space-y-4 pt-4 border-t border-stone-200/60 animate-fade-in">
+              <div className="p-3 bg-violet-500/10 border border-violet-500/20 rounded-xl text-[11px] text-violet-800 flex items-start gap-2">
+                <Sparkles size={14} className="text-violet-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold">Transaksi Berjenis Pengisian Petty Cash Aktif</span>
+                  <p className="text-stone-550">Sistem akan mengelompokkan voucher ini ke dalam rekapitulasi real-time Petty Cash lapangan pertunjukan berdasarkan personil yang berhak.</p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-stone-500 mb-1">
-                    Nama Pemegang Petty Cash (Custodian) <span className="text-rose-500">*</span>
+                  <label className="block text-xs font-bold text-stone-600 mb-1">
+                    Nama Pemegang Petty Cash (Custodian) <span className="text-rose-500 font-bold">*</span>
                   </label>
                   <input
                     type="text"
                     required={isPettyCash}
                     placeholder="Contoh: Muhammad Akbar, Nurul Izza..."
-                    className="w-full bg-white border border-stone-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-stone-400"
+                    className="w-full bg-white border border-stone-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-stone-400 font-semibold"
                     value={pettyCashCustodian}
                     onChange={(e) => setPettyCashCustodian(e.target.value)}
                   />
@@ -1417,9 +1456,10 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
               </div>
 
               {/* Dedicated Upload space for Laporan Pertanggungjawaban / Laporan Periode Petty Cash */}
-              <div className="bg-stone-50/50 rounded-xl border border-stone-200 p-4 space-y-3">
-                <div className="flex items-center gap-1.5 justify-start text-[11px] font-mono font-bold uppercase tracking-wider text-stone-600">
-                  <span>📂 Berkas Laporan Pertanggungjawaban Petty Cash</span>
+              <div className="bg-white rounded-xl border border-stone-200 p-4 space-y-3 shadow-3xs">
+                <div className="flex items-center gap-1.5 justify-start text-[11px] font-mono font-bold uppercase tracking-wider text-stone-700">
+                  <Coins size={13} className="text-violet-500" />
+                  <span>Berkas Laporan Pertanggungjawaban Petty Cash Lapangan</span>
                   <span className="text-rose-500 font-extrabold">*</span>
                 </div>
 
@@ -1441,7 +1481,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                               href={pettyCashDriveFile.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-1.5 hover:bg-emerald-100/55 rounded-lg text-emerald-700 transition"
+                              className="p-1.5 hover:bg-emerald-100/55 rounded-lg text-emerald-700 transition cursor-pointer"
                               title="Buka Berkas di Google Drive"
                             >
                               <ExternalLink size={13} />
@@ -1453,7 +1493,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                               setPettyCashLocalFile(null);
                               setPettyCashDriveFile(null);
                             }}
-                            className="p-1.5 hover:bg-rose-150 rounded-lg text-rose-600 transition"
+                            className="p-1.5 hover:bg-rose-150 rounded-lg text-rose-600 transition cursor-pointer"
                             title="Hapus Berkas Laporan"
                           >
                             <Trash2 size={13} />
@@ -1461,13 +1501,15 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                         </div>
                       </div>
                     ) : (
-                      <div className="text-xs text-stone-400 italic font-mono uppercase">Belum ada berkas laporan pertanggungjawaban diunggah.</div>
+                      <div className="text-xs text-stone-400 italic bg-stone-100/50 p-3 rounded-xl border border-stone-200 border-dashed">
+                        LPJ Berkas belum terunggah. Silakan klik tombol di samping kanan untuk menyertakan pindaian/Laporan resmi.
+                      </div>
                     )}
                   </div>
 
                   <div className="flex justify-end">
                     <label className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 hover:bg-stone-50 border border-stone-250 text-stone-850 font-bold rounded-xl transition text-xs shadow-3xs cursor-pointer select-none">
-                      <FileUp size={13} className="text-amber-500" />
+                      <FileUp size={13} className="text-violet-500" />
                       <span>{pettyCashLocalFile || pettyCashDriveFile ? 'Ganti File Laporan' : 'Pilih File Laporan'}</span>
                       <input
                         type="file"
@@ -1483,10 +1525,10 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                   </div>
                 </div>
 
-                <p className="text-[10.5px] text-stone-550 leading-relaxed font-mono font-medium">
-                  Laporan Pertanggungjawaban Petty Cash dikompresi & diletakkan secara teratur pada hierarki berkas Google Drive:
-                  <code className="block mt-1.5 p-1.5 bg-stone-100 border border-stone-200 text-[10px] text-amber-950 font-mono rounded-lg">
-                    Voucher-APP &gt; Petty Cash &gt; [Pemegang Petty Cash] &gt; [Tahun] &gt; [Bulan] &gt; [Tanggal] &gt; (Berkas Laporan)
+                <p className="text-[10px] text-stone-400 leading-relaxed font-mono font-medium">
+                  Berkas LPJ dikompresi serta diletakkan pada folder Google Drive:
+                  <code className="block mt-1 p-1 bg-stone-50 border border-stone-150 text-[9.5px] text-violet-950 font-mono rounded-lg">
+                    Voucher-APP &gt; Petty Cash &gt; [Pemegang Petty Cash] &gt; [Tahun] &gt; [Bulan] &gt; (LPJ File)
                   </code>
                 </p>
               </div>
