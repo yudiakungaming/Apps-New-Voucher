@@ -206,12 +206,18 @@ export const mapFirestoreToSubmission = (docId: string, data: any): Submission =
     googleDriveFileUrl: data.googleDriveFileUrl || '',
     googleDriveFileName: data.googleDriveFileName || '',
     googleDriveFiles: data.googleDriveFiles || (data.googleDriveFileUrl ? [{ url: data.googleDriveFileUrl, name: data.googleDriveFileName || 'Buka di Drive' }] : []),
+    buktiPembayaran: data.buktiPembayaran || undefined,
 
     // Invoice properties mapping
     isInvoice: !!data.isInvoice,
     invoiceNumber: data.invoiceNumber || '',
     invoiceDate: data.invoiceDate || '',
     invoiceAmount: typeof data.invoiceAmount === 'number' ? data.invoiceAmount : undefined,
+
+    // Petty Cash properties mapping
+    isPettyCash: !!data.isPettyCash,
+    pettyCashCustodian: data.pettyCashCustodian || '',
+    pettyCashFile: data.pettyCashFile || undefined,
 
     items: mappedItems,
     createdAt: createdAtStr
@@ -330,6 +336,11 @@ export const mapSubmissionToFirestore = (
     invoiceNumber: sub.invoiceNumber || '',
     invoiceDate: sub.invoiceDate || '',
     invoiceAmount: typeof sub.invoiceAmount === 'number' ? sub.invoiceAmount : null,
+    buktiPembayaran: sub.buktiPembayaran || null,
+
+    isPettyCash: !!sub.isPettyCash,
+    pettyCashCustodian: sub.pettyCashCustodian || '',
+    pettyCashFile: sub.pettyCashFile || null,
     
     lokasi: sub.lokasi || 'Lt. 1',
     tanggal: sub.tanggal || '',

@@ -7,7 +7,7 @@ import {
   getConnectedDrives 
 } from '../firebase';
 import { DriveAccountsManager } from './DriveAccountsManager';
-import { Trash2, Plus, ArrowLeft, Save, AlertCircle, Sparkles, Cloud, Loader2, FileText } from 'lucide-react';
+import { Trash2, Plus, ArrowLeft, Save, AlertCircle, Sparkles, Cloud, Loader2, FileText, Coins, FileUp, ExternalLink } from 'lucide-react';
 import { generateF1PdfBytes, generateF2PdfBytes, formatDateIndonesian, convertImageToPdf } from '../utils';
 
 interface SubmissionFormProps {
@@ -161,6 +161,36 @@ const getOrCreateFolderHierarchy = async (
   return txFolderId;
 };
 
+const getOrCreatePettyCashFolderHierarchy = async (
+  token: string,
+  custodian: string,
+  year: string,
+  month: string,
+  day: string
+): Promise<string> => {
+  // 1. Get or create 'Voucher-APP' under 'root'
+  const rootId = 'root';
+  const voucherAppId = await getOrCreateFolder(token, 'Voucher-APP', rootId);
+  
+  // 2. Get or create 'Petty Cash' folder under 'Voucher-APP'
+  const pettyCashId = await getOrCreateFolder(token, 'Petty Cash', voucherAppId);
+
+  // 3. Get or create custodian folder under 'Petty Cash' folder
+  const cleanCustodian = (custodian || 'Pemegang Petty Cash').trim().replace(/[\/\\?%*:|"<>.]/g, '');
+  const custodianId = await getOrCreateFolder(token, cleanCustodian, pettyCashId);
+  
+  // 4. Get or create year folder under custodian folder
+  const yearId = await getOrCreateFolder(token, year, custodianId);
+  
+  // 5. Get or create month folder under year folder
+  const monthId = await getOrCreateFolder(token, month, yearId);
+  
+  // 6. Get or create day folder under month folder
+  const dayId = await getOrCreateFolder(token, day, monthId);
+
+  return dayId;
+};
+
 // Helper to auto-generate monthly dynamic accounting voucher codes based on Company name, month, and year.
 const generateAutoKode = (targetDate: string, compCode: string, allSubmissions: Submission[], currentId?: string): string => {
   if (!targetDate) return '';
@@ -225,6 +255,12 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [invoiceAmount, setInvoiceAmount] = useState<number | string>('');
+
+  // Petty Cash fields
+  const [isPettyCash, setIsPettyCash] = useState(false);
+  const [pettyCashCustodian, setPettyCashCustodian] = useState('');
+  const [pettyCashLocalFile, setPettyCashLocalFile] = useState<File | null>(null);
+  const [pettyCashDriveFile, setPettyCashDriveFile] = useState<{ url: string; name: string } | null>(null);
 
   // Signatures
   const [dibuatOleh, setDibuatOleh] = useState(() => localStorage.getItem('NUSANTARA_DEFAULT_CREATOR_NAME') || 'Nur Wahyudi');
@@ -369,8 +405,13 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setInvoiceNumber(initialSubmission.invoiceNumber || '');
       setInvoiceDate(initialSubmission.invoiceDate || '');
       setInvoiceAmount(initialSubmission.invoiceAmount !== undefined ? initialSubmission.invoiceAmount : '');
+      setIsPettyCash(initialSubmission.isPettyCash || false);
+      setPettyCashCustodian(initialSubmission.pettyCashCustodian || '');
+      setPettyCashDriveFile(initialSubmission.pettyCashFile || null);
+      setPettyCashLocalFile(null);
       setGoogleDriveFileUrl(initialSubmission.googleDriveFileUrl || '');
       setGoogleDriveFileName(initialSubmission.googleDriveFileName || '');
+      setBuktiPembayaranDrive(initialSubmission.buktiPembayaran || null);
       if (initialSubmission.googleDriveFiles && initialSubmission.googleDriveFiles.length > 0) {
         setGoogleDriveFiles(initialSubmission.googleDriveFiles);
         setFileItems(initialSubmission.googleDriveFiles.map((f, i) => ({
@@ -438,6 +479,10 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setFileItems([]);
       setBuktiPembayaranFile(null);
       setBuktiPembayaranDrive(null);
+      setIsPettyCash(false);
+      setPettyCashCustodian('');
+      setPettyCashLocalFile(null);
+      setPettyCashDriveFile(null);
       const storedDefaultCreator = localStorage.getItem('NUSANTARA_DEFAULT_CREATOR_NAME');
       const storedDefaultApprover = localStorage.getItem('NUSANTARA_DEFAULT_APPROVER_NAME');
       const storedDefaultVerifier = localStorage.getItem('NUSANTARA_DEFAULT_VERIFIER_NAME');
@@ -528,6 +573,14 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setValidationError('Nama item pengajuan tidak boleh kosong.');
       return;
     }
+    if (isPettyCash && !pettyCashCustodian.trim()) {
+      setValidationError('Nama pemegang Petty cash wajib diisi untuk transaksi Pengisian Petty Cash Lapangan.');
+      return;
+    }
+    if (isPettyCash && !pettyCashLocalFile && !pettyCashDriveFile) {
+      setValidationError('Berkas laporan pertanggungjawaban Petty cash wajib diunggah/dipilih.');
+      return;
+    }
     if (calculatedGrandTotal < 0) {
       setValidationError('Total Gabungan pengajuan tidak boleh di bawah 0 (negatif). Harap periksa kembali pengeluaran dan pengurangan/potongan Anda.');
       return;
@@ -540,6 +593,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
     try {
       let finalFiles: { url: string; name: string; isF1?: boolean; isF2?: boolean; isBuktiPembayaran?: boolean; docType?: string }[] = [];
       let finalBuktiPembayaran: { url: string; name: string } | undefined = undefined;
+      let finalPettyCashFile: { url: string; name: string } | undefined = undefined;
 
       const token = getStoredGoogleDriveToken();
       if (token) {
@@ -861,16 +915,73 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           });
         } else if (buktiPembayaranDrive) {
           finalBuktiPembayaran = buktiPembayaranDrive;
-          finalFiles.push({
-            url: buktiPembayaranDrive.url,
-            name: buktiPembayaranDrive.name,
-            isBuktiPembayaran: true
-          });
+          if (!finalFiles.some(f => f.url === buktiPembayaranDrive.url)) {
+            finalFiles.push({
+              url: buktiPembayaranDrive.url,
+              name: buktiPembayaranDrive.name,
+              isBuktiPembayaran: true
+            });
+          }
+        }
+
+        // 6. Upload Petty Cash LPJ file to dedicated Petty Cash directory if isPettyCash is true
+        if (isPettyCash) {
+          if (pettyCashLocalFile) {
+            setSaveProgress('Membuat/Mencari folder Laporan Pertanggungjawaban Petty Cash...');
+            const pchyHierarchyId = await getOrCreatePettyCashFolderHierarchy(
+              token,
+              pettyCashCustodian,
+              yearStr,
+              monthStr,
+              dayStr
+            );
+            
+            setSaveProgress(`Mengunggah berkas Laporan Petty Cash: ${pettyCashLocalFile.name}...`);
+            let pchyBytes = new Uint8Array(await pettyCashLocalFile.arrayBuffer());
+            let pchyMime = pettyCashLocalFile.type || 'application/octet-stream';
+            
+            let pchyExt = getFileExtensionForSave(pettyCashLocalFile.name) || '.pdf';
+            if (pchyMime.startsWith('image/') || /\.jpe?g|\.png/i.test(pettyCashLocalFile.name)) {
+              try {
+                setSaveProgress('Mengubah gambar laporan petty cash ke PDF...');
+                pchyBytes = await convertImageToPdf(pchyBytes, pchyMime);
+                pchyMime = 'application/pdf';
+                pchyExt = '.pdf';
+              } catch (convErr) {
+                console.warn('Gagal mengubah berkas laporan petty cash ke PDF:', convErr);
+              }
+            }
+            
+            let pchyFinalName = `Laporan Petty Cash - ${pettyCashCustodian.trim()} (${tanggal})${pchyExt}`;
+            
+            const pchyUploadResult = await uploadFileToFolder(pchyFinalName, pchyMime, pchyBytes, pchyHierarchyId);
+            finalPettyCashFile = pchyUploadResult;
+            
+            finalFiles.push({
+              url: pchyUploadResult.url,
+              name: pchyUploadResult.name,
+              docType: 'petty_cash_report'
+            });
+          } else if (pettyCashDriveFile) {
+            finalPettyCashFile = pettyCashDriveFile;
+            finalFiles.push({
+              url: pettyCashDriveFile.url,
+              name: pettyCashDriveFile.name,
+              docType: 'petty_cash_report'
+            });
+          }
+        }
+      } else {
+        // If Google Drive is not connected or token is falsy, preserve existing files, payment proof and petty cash
+        if (initialSubmission) {
+          finalFiles = initialSubmission.googleDriveFiles || [];
+          finalBuktiPembayaran = initialSubmission.buktiPembayaran || undefined;
+          finalPettyCashFile = initialSubmission.pettyCashFile || undefined;
         }
       }
 
       // Extract the first non-form attachment link as the legacy single-file fallback URL
-      const firstRealAttachment = finalFiles.find(f => !f.isF1 && !f.isF2 && !f.isBuktiPembayaran);
+      const firstRealAttachment = finalFiles.find(f => !f.isF1 && !f.isF2 && !f.isBuktiPembayaran && f.docType !== 'petty_cash_report');
       const finalFileUrl = firstRealAttachment ? firstRealAttachment.url : (finalFiles.length > 0 ? finalFiles[0].url : '');
       const finalFileName = firstRealAttachment ? firstRealAttachment.name : (finalFiles.length > 0 ? finalFiles[0].name : '');
 
@@ -878,6 +989,18 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         ...item,
         total: Number(item.total) || 0
       }));
+
+      // Ensure we preserve the Lunas status if there was a payment proof uploaded (previously or now),
+      // if it was marked as Lunas, if the form state is Lunas, or if Cek/Transfer method is used.
+      const isLunas = !!(
+        finalBuktiPembayaran ||
+        buktiPembayaranFile ||
+        buktiPembayaranDrive ||
+        initialSubmission?.buktiPembayaran ||
+        status === 'Lunas' ||
+        initialSubmission?.status === 'Lunas' ||
+        dibayarkanDengan === 'Cek/Transfer'
+      );
 
       const payload: Submission = {
         id: id || `sub-${Date.now()}`,
@@ -887,7 +1010,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         kode,
         dibayarkanKepada,
         dibayarkanDengan,
-        status: finalBuktiPembayaran ? 'Lunas' : 'Belum Lunas',
+        status: isLunas ? 'Lunas' : 'Belum Lunas',
         notes,
         
         // Save Invoice properties
@@ -895,6 +1018,11 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         invoiceNumber,
         invoiceDate,
         invoiceAmount: invoiceAmount !== '' ? Number(invoiceAmount) : undefined,
+
+        // Save Petty Cash properties
+        isPettyCash,
+        pettyCashCustodian: isPettyCash ? pettyCashCustodian : undefined,
+        pettyCashFile: isPettyCash ? finalPettyCashFile : undefined,
 
         googleDriveFileUrl: finalFileUrl,
         googleDriveFileName: finalFileName,
@@ -1230,6 +1358,137 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                     </div>
                   );
                 })()}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* SECTION KLASIFIKASI & INFORMASI PETTY CASH LAPANGAN */}
+        <div className="border border-stone-200/80 rounded-2xl p-5 space-y-4 bg-stone-50/30">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <h3 className="text-xs font-black uppercase font-mono tracking-wider text-stone-600 flex items-center gap-1.5">
+                <Coins size={14} className="text-gold-dynamic" />
+                Klasifikasi Pengisian Petty Cash Lapangan
+              </h3>
+              <p className="text-[11px] text-stone-400 font-medium">Tandai jika transaksi ini merupakan Pengisian Petty Cash Lapangan oleh personil yang bertanggung jawab.</p>
+            </div>
+            <div className="flex items-center gap-2.5 self-start sm:self-auto bg-white border border-stone-200 px-3 py-1.5 rounded-xl shadow-3xs select-none">
+              <span className="text-[11px] font-bold text-stone-700">Pengisian Petty Cash Lapangan?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const val = !isPettyCash;
+                  setIsPettyCash(val);
+                  if (!val) {
+                    setPettyCashCustodian('');
+                    setPettyCashLocalFile(null);
+                  }
+                }}
+                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isPettyCash ? 'bg-amber-500' : 'bg-stone-200'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-3xs ring-0 transition duration-200 ease-in-out ${
+                    isPettyCash ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {isPettyCash && (
+            <div className="space-y-4 pt-3 border-t border-stone-200/60 animate-fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-500 mb-1">
+                    Nama Pemegang Petty Cash (Custodian) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required={isPettyCash}
+                    placeholder="Contoh: Muhammad Akbar, Nurul Izza..."
+                    className="w-full bg-white border border-stone-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-stone-400"
+                    value={pettyCashCustodian}
+                    onChange={(e) => setPettyCashCustodian(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Dedicated Upload space for Laporan Pertanggungjawaban / Laporan Periode Petty Cash */}
+              <div className="bg-stone-50/50 rounded-xl border border-stone-200 p-4 space-y-3">
+                <div className="flex items-center gap-1.5 justify-start text-[11px] font-mono font-bold uppercase tracking-wider text-stone-600">
+                  <span>📂 Berkas Laporan Pertanggungjawaban Petty Cash</span>
+                  <span className="text-rose-500 font-extrabold">*</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+                  <div>
+                    {pettyCashLocalFile || pettyCashDriveFile ? (
+                      <div className="p-3 bg-emerald-50/20 border border-emerald-250 rounded-xl flex items-center justify-between gap-3 shadow-3xs">
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-xs font-bold text-emerald-800 truncate" title={pettyCashLocalFile ? pettyCashLocalFile.name : pettyCashDriveFile?.name}>
+                            {pettyCashLocalFile ? pettyCashLocalFile.name : pettyCashDriveFile?.name}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[8px] text-emerald-600 font-bold uppercase tracking-widest font-mono mt-0.5">
+                            {pettyCashLocalFile ? '● File Berkas Baru (Belum Disimpan)' : '● Terunggah di Google Drive'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!pettyCashLocalFile && pettyCashDriveFile?.url && (
+                            <a
+                              href={pettyCashDriveFile.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 hover:bg-emerald-100/55 rounded-lg text-emerald-700 transition"
+                              title="Buka Berkas di Google Drive"
+                            >
+                              <ExternalLink size={13} />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPettyCashLocalFile(null);
+                              setPettyCashDriveFile(null);
+                            }}
+                            className="p-1.5 hover:bg-rose-150 rounded-lg text-rose-600 transition"
+                            title="Hapus Berkas Laporan"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-stone-400 italic font-mono uppercase">Belum ada berkas laporan pertanggungjawaban diunggah.</div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <label className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 hover:bg-stone-50 border border-stone-250 text-stone-850 font-bold rounded-xl transition text-xs shadow-3xs cursor-pointer select-none">
+                      <FileUp size={13} className="text-amber-500" />
+                      <span>{pettyCashLocalFile || pettyCashDriveFile ? 'Ganti File Laporan' : 'Pilih File Laporan'}</span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            setPettyCashLocalFile(e.target.files[0]);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <p className="text-[10.5px] text-stone-550 leading-relaxed font-mono font-medium">
+                  Laporan Pertanggungjawaban Petty Cash dikompresi & diletakkan secara teratur pada hierarki berkas Google Drive:
+                  <code className="block mt-1.5 p-1.5 bg-stone-100 border border-stone-200 text-[10px] text-amber-950 font-mono rounded-lg">
+                    Voucher-APP &gt; Petty Cash &gt; [Pemegang Petty Cash] &gt; [Tahun] &gt; [Bulan] &gt; [Tanggal] &gt; (Berkas Laporan)
+                  </code>
+                </p>
               </div>
             </div>
           )}

@@ -781,6 +781,14 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                 <span className="text-black">:</span>
                 <span className="text-black font-bold">{submission.dibayarkanKepada}</span>
 
+                {submission.isPettyCash && (
+                  <>
+                    <span className="font-semibold text-black">Pemegang Petty Cash</span>
+                    <span className="text-black">:</span>
+                    <span className="text-black font-bold text-violet-800">{submission.pettyCashCustodian}</span>
+                  </>
+                )}
+
                 <span className="font-semibold text-black">Jenis Pengajuan</span>
                 <span className="text-black">:</span>
                 <span className="text-black">{submission.jenisPengajuan}</span>

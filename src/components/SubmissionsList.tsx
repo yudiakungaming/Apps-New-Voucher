@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Submission, ActivityLog } from '../types';
 import { formatRupiah, formatDateIndonesian } from '../utils';
-import { Search, Eye, Edit2, Trash2, Calendar, MapPin, DollarSign, Plus, Copy, RefreshCw, Cloud, FileText, Database, History, FileSpreadsheet, CheckCircle, AlertCircle, Printer, Check, ExternalLink } from 'lucide-react';
+import { Search, Eye, Edit2, Trash2, Calendar, MapPin, DollarSign, Plus, Copy, RefreshCw, Cloud, FileText, Database, History, FileSpreadsheet, CheckCircle, AlertCircle, Printer, Check, ExternalLink, Coins, User } from 'lucide-react';
 import { loadActivityLogsFromFirestore } from '../firebase';
 
 interface SubmissionsListProps {
@@ -28,9 +28,14 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [jenisFilter, setJenisFilter] = useState<string>('');
   
-  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs' | 'invoice_recap' | 'unpaid_outstanding'>('standard');
+  const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs' | 'invoice_recap' | 'unpaid_outstanding' | 'petty_cash_recap'>('standard');
   const [activeSheetTab, setActiveSheetTab] = useState<string>('Data Sinkron');
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  // States for Petty Cash Recap view
+  const [pettyCashSearchQuery, setPettyCashSearchQuery] = useState<string>('');
+  const [pettyCashCustodianFilter, setPettyCashCustodianFilter] = useState<string>('All');
+  const [pettyCashMonthFilter, setPettyCashMonthFilter] = useState<string>('All');
 
   // States for Unpaid/Outstanding view
   const [unpaidSearchTerm, setUnpaidSearchTerm] = useState<string>('');
@@ -195,6 +200,67 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       return hasInvoiceTag || hasInvoiceFile || isInvoiceNote || isInvoiceItem;
     });
   }, [submissions]);
+
+  // Petty Cash calculations and groupings
+  const pettyCashSubmissions = useMemo(() => {
+    return submissions.filter(sub => !!sub.isPettyCash);
+  }, [submissions]);
+
+  const availablePettyCashCustodians = useMemo(() => {
+    const custodians = new Set<string>();
+    pettyCashSubmissions.forEach(sub => {
+      if (sub.pettyCashCustodian) {
+        custodians.add(sub.pettyCashCustodian.trim());
+      }
+    });
+    return Array.from(custodians).sort();
+  }, [pettyCashSubmissions]);
+
+  const availablePettyCashMonths = useMemo(() => {
+    const months = new Set<string>();
+    pettyCashSubmissions.forEach(sub => {
+      if (sub.tanggal) {
+        const parts = sub.tanggal.split('-');
+        if (parts.length >= 2) {
+          months.add(`${parts[0]}-${parts[1]}`);
+        }
+      }
+    });
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [pettyCashSubmissions]);
+
+  const filteredPettyCashSubmissions = useMemo(() => {
+    return pettyCashSubmissions.filter(sub => {
+      // 1. Custodian Filter
+      if (pettyCashCustodianFilter !== 'All') {
+        if (sub.pettyCashCustodian?.trim() !== pettyCashCustodianFilter.trim()) {
+          return false;
+        }
+      }
+
+      // 2. Month Filter
+      if (pettyCashMonthFilter !== 'All') {
+        const parts = sub.tanggal.split('-');
+        const subMonth = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : '';
+        if (subMonth !== pettyCashMonthFilter) return false;
+      }
+
+      // 3. Search Query
+      if (pettyCashSearchQuery.trim()) {
+        const query = pettyCashSearchQuery.toLowerCase();
+        const textToSearch = [
+          sub.kode || '',
+          sub.pettyCashCustodian || '',
+          sub.jenisPengajuan || '',
+          sub.notes || '',
+          sub.dibayarkanKepada || ''
+        ].join(' ').toLowerCase();
+        if (!textToSearch.includes(query)) return false;
+      }
+
+      return true;
+    });
+  }, [pettyCashSubmissions, pettyCashCustodianFilter, pettyCashMonthFilter, pettyCashSearchQuery]);
 
   // Dynamic invoice month list
   const availableInvoiceMonths = useMemo(() => {
@@ -429,6 +495,23 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
               {allUnpaidSubmissionsAllTime.length}
             </span>
           </button>
+
+          <button
+            onClick={() => setLayoutMode('petty_cash_recap')}
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
+              layoutMode === 'petty_cash_recap'
+                ? 'bg-violet-700 text-white shadow-sm font-extrabold font-display'
+                : 'bg-transparent text-stone-500 hover:text-violet-700 hover:bg-stone-150/40'
+            }`}
+          >
+            <Coins size={13} className={layoutMode === 'petty_cash_recap' ? 'text-white' : 'text-violet-500'} />
+            <span className="flex items-center gap-1">Petty Cash Lapangan</span>
+            <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-black ${
+              layoutMode === 'petty_cash_recap' ? 'bg-white text-violet-800' : 'bg-violet-100 text-violet-800'
+            }`}>
+              {pettyCashSubmissions.length}
+            </span>
+          </button>
         </div>
         
         <div className="flex items-center gap-2 text-right pr-2 select-none">
@@ -655,6 +738,18 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                             }`}>
                               {sub.status || (sub.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas')}
                             </span>
+
+                            {sub.isInvoice && (
+                              <span className="inline-block text-[9px] font-mono bg-amber-500 text-white font-black px-2 py-0.5 rounded-md shadow-3xs uppercase tracking-wider">
+                                Invoice
+                              </span>
+                            )}
+
+                            {sub.isPettyCash && (
+                              <span className="inline-block text-[9px] font-mono bg-violet-600 text-white font-black px-2 py-0.5 rounded-md shadow-3xs uppercase tracking-wider" title={`Custodian: ${sub.pettyCashCustodian}`}>
+                                Petty Cash
+                              </span>
+                            )}
 
                             {sub.googleDriveFileUrl && (
                               <a
@@ -2010,6 +2105,321 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
 
           </div>
 
+        </div>
+      ) : layoutMode === 'petty_cash_recap' ? (
+        /* Dedicated Petty Cash Reconciliation and Report View */
+        <div className="space-y-6">
+          {/* Header Panel */}
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in print:hidden">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="p-2.5 bg-violet-50 rounded-xl text-violet-700">
+                  <Coins size={22} className="text-violet-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-stone-900 tracking-tight font-display uppercase font-mono">Rekonsiliasi Petty Cash Lapangan</h2>
+                  <p className="text-xs text-stone-500">Menganalisis, menyaring, and mengelola berkas laporan pertanggungjawaban petty cash lapangan per pemegang kas (custodian).</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 px-4.5 py-2.5 hover:bg-stone-100 border border-stone-250 text-stone-800 font-extrabold rounded-xl transition duration-150 text-xs shadow-3xs cursor-pointer select-none"
+                title="Cetak Laporan Petty Cash Lapangan ke PDF"
+              >
+                <Printer size={14} className="text-violet-600" />
+                <span>Cetak Rekap Pertanggungjawaban (PDF)</span>
+              </button>
+              
+              <button
+                onClick={onAddNew}
+                className="inline-flex items-center gap-2 px-4.5 py-2.5 bg-stone-900 hover:bg-stone-800 text-white font-extrabold rounded-xl transition duration-150 text-xs shadow-xs cursor-pointer select-none"
+              >
+                <Plus size={14} className="text-[#D4AF37]" />
+                <span>Input Transaksi Baru</span>
+              </button>
+            </div>
+          </div>
+
+          {/* PRINT-ONLY HEADER AND FORMAL REPORT ACCENT */}
+          <div className="hidden print:block font-sans text-black p-2 space-y-4">
+            <div className="border-b-2 border-stone-900 pb-3 flex justify-between items-end">
+              <div>
+                <h1 className="text-lg font-bold font-display uppercase tracking-wider">PT NUSANTARA MINERAL SUKSES ABADI</h1>
+                <p className="text-[10px] text-stone-500 font-mono">DIVISI FINANCE & INTERNAL LEDGER DATABASE</p>
+                <h2 className="text-xs font-semibold text-stone-850 mt-0.5">Laporan Rekonsiliasi & Pertanggungjawaban Petty Cash Lapangan</h2>
+              </div>
+              <div className="text-right font-mono text-[9px] text-stone-500">
+                <p>Dicetak pada: {new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                <p>Status: VERIFIKASI SELESAI</p>
+                {pettyCashCustodianFilter !== 'All' && <p>Pemegang Kas: {pettyCashCustodianFilter}</p>}
+                {pettyCashMonthFilter !== 'All' && <p>Periode Laporan: {pettyCashMonthFilter}</p>}
+              </div>
+            </div>
+
+            {/* Print KPIs */}
+            <div className="grid grid-cols-3 gap-4 border border-stone-300 p-2.5 rounded-lg font-mono text-[11px]">
+              <div>
+                <span className="text-stone-500 uppercase block text-[8px]">Total Pencatatan</span>
+                <strong>{filteredPettyCashSubmissions.length} Transaksi Pengisian</strong>
+              </div>
+              <div>
+                <span className="text-stone-500 uppercase block text-[8px]">Yg Mengajukan LPJ</span>
+                <strong>{pettyCashCustodianFilter === 'All' ? 'Semua Custodian' : pettyCashCustodianFilter}</strong>
+              </div>
+              <div>
+                <span className="text-stone-500 uppercase block text-[8px]">Total Nominal Rekap</span>
+                <strong>Rp {filteredPettyCashSubmissions.reduce((sum, sub) => sum + sub.items.reduce((s, i) => s + (i.total || 0), 0), 0).toLocaleString('id-ID')}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI Cards (Metrics) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 print:hidden">
+            <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-3xs flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 font-mono">Total Transaksi Petty Cash</span>
+                <div className="text-2xl font-black text-stone-900 font-display">
+                  {filteredPettyCashSubmissions.length} <span className="text-xs font-medium text-stone-400">Unit Voucher</span>
+                </div>
+              </div>
+              <div className="p-3 bg-violet-50 text-violet-700 rounded-2xl">
+                <Coins size={20} />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-3xs flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 font-mono">Total Dana Direkon</span>
+                <div className="text-2xl font-black text-stone-900 font-mono">
+                  Rp {formatRupiah(filteredPettyCashSubmissions.reduce((sum, sub) => sum + sub.items.reduce((s, i) => s + (i.total || 0), 0), 0))}
+                </div>
+              </div>
+              <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl">
+                <FileSpreadsheet size={20} />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-stone-200/80 shadow-3xs flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-stone-400 font-mono">Custodian Aktif</span>
+                <div className="text-2xl font-black text-stone-900 font-display">
+                  {availablePettyCashCustodians.length} <span className="text-xs font-medium text-stone-400">Personil</span>
+                </div>
+              </div>
+              <div className="p-3 bg-amber-50 text-amber-700 rounded-2xl">
+                <User size={20} />
+              </div>
+            </div>
+          </div>
+
+          {/* Saringan & Sorter Panel */}
+          <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-3xs print:hidden">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              
+              {/* Search input field */}
+              <div className="md:col-span-2 space-y-1.5">
+                <label className="block text-xs font-bold text-stone-550">Pencarian Cepat</label>
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" size={15} />
+                  <input
+                    type="text"
+                    className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-violet-500 focus:border-transparent text-stone-800 placeholder-stone-400"
+                    placeholder="Cari pemegang, kode pengisian, jenis, dll..."
+                    value={pettyCashSearchQuery}
+                    onChange={(e) => setPettyCashSearchQuery(e.target.value)}
+                  />
+                  {pettyCashSearchQuery && (
+                    <button
+                      onClick={() => setPettyCashSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 text-xs font-bold font-mono"
+                    >
+                      CLEAR
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Custodian Select Dropdown */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-stone-550">Pemegang Petty Cash</label>
+                <select
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-850 focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer"
+                  value={pettyCashCustodianFilter}
+                  onChange={(e) => setPettyCashCustodianFilter(e.target.value)}
+                >
+                  <option value="All">Semua Custodian ({availablePettyCashCustodians.length})</option>
+                  {availablePettyCashCustodians.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Month Select Dropdown */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-stone-550">Periode Bulan</label>
+                <select
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-850 focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer"
+                  value={pettyCashMonthFilter}
+                  onChange={(e) => setPettyCashMonthFilter(e.target.value)}
+                >
+                  <option value="All">Semua Periode ({availablePettyCashMonths.length})</option>
+                  {availablePettyCashMonths.map(m => {
+                    const [y, mNum] = m.split('-');
+                    const indMonths = [
+                      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+                    ];
+                    const label = `${indMonths[parseInt(mNum, 10) - 1]} ${y}`;
+                    return <option key={m} value={m}>{label}</option>;
+                  })}
+                </select>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Table Ledger view */}
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden print:shadow-none print:border-none">
+            <div className="p-5 border-b border-stone-200/80 flex items-center justify-between print:hidden">
+              <span className="text-xs font-black uppercase font-mono tracking-wider text-stone-600">Daftar Laporan Pertanggungjawaban Petty Cash Terdaftar</span>
+              <span className="text-[10px] bg-violet-100 text-violet-850 font-mono font-extrabold px-2 py-0.5 rounded-lg border border-violet-150 shadow-3xs uppercase">
+                {filteredPettyCashSubmissions.length} Transaksi Ditemukan
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              {filteredPettyCashSubmissions.length > 0 ? (
+                <table className="w-full text-left border-collapse print:table">
+                  <thead>
+                    <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-display text-[10px] uppercase tracking-widest font-extrabold">
+                      <th className="py-4 px-6 print:py-2 print:px-3">Tanggal & Voucher</th>
+                      <th className="py-4 px-6 print:py-2 print:px-3">Pemegang Petty Cash</th>
+                      <th className="py-4 px-6 print:py-2 print:px-3">Uraian / Sektor Lokasi</th>
+                      <th className="py-4 px-6 text-right print:py-2 print:px-3">Jumlah Pengisian</th>
+                      <th className="py-4 px-6 text-center print:py-2 print:px-3 font-extrabold">Berkas LPJ</th>
+                      <th className="py-4 px-6 text-center print:hidden">Tindakan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100 text-stone-850 text-xs">
+                    {filteredPettyCashSubmissions.map((sub) => {
+                      const totalNominal = sub.items.reduce((s, i) => s + (i.total || 0), 0);
+                      return (
+                        <tr key={sub.id} className="hover:bg-stone-50/50 transition">
+                          {/* Tanggal & Voucher Code */}
+                          <td className="py-4.5 px-6 whitespace-nowrap print:py-1.5 print:px-3 font-mono">
+                            <div className="font-extrabold text-stone-900">{formatDateIndonesian(sub.tanggal)}</div>
+                            <div className="text-[10px] font-mono text-stone-400 mt-0.5">{sub.kode}</div>
+                          </td>
+
+                          {/* Pemegang Petty Cash Custodian */}
+                          <td className="py-4.5 px-6 print:py-1.5 print:px-3">
+                            <div className="flex items-center gap-1.5">
+                              <div className="h-6 w-6 rounded-full bg-violet-100 text-violet-800 flex items-center justify-center font-bold text-[10px] uppercase font-sans shrink-0">
+                                {sub.pettyCashCustodian ? sub.pettyCashCustodian.charAt(0) : 'C'}
+                              </div>
+                              <div>
+                                <span className="font-black text-stone-900 block leading-tight">{sub.pettyCashCustodian || '-'}</span>
+                                <span className="text-[9px] font-mono font-bold text-stone-400 uppercase tracking-widest">Custodian Lapangan</span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Uraian dan Lokasi */}
+                          <td className="py-4.5 px-6 print:py-1.5 print:px-3">
+                            <div className="font-bold text-stone-850">{sub.jenisPengajuan}</div>
+                            <div className="text-[10.5px] text-stone-550 mt-0.5 font-sans leading-relaxed">
+                              Sektor Lokasi: <strong className="text-stone-700">{sub.lokasi}</strong>
+                              {sub.notes && <span className="block mt-0.5 text-stone-400 italic">"{sub.notes}"</span>}
+                            </div>
+                          </td>
+
+                          {/* Jumlah Pengisian */}
+                          <td className="py-4.5 px-6 text-right font-mono font-extrabold text-stone-900 print:py-1.5 print:px-3 text-xs leading-none">
+                            Rp {formatRupiah(totalNominal)}
+                          </td>
+
+                          {/* Berkas LPJ Link */}
+                          <td className="py-4.5 px-6 text-center print:py-1.5 print:px-3 whitespace-nowrap">
+                            {sub.pettyCashFile?.url ? (
+                              <a
+                                href={sub.pettyCashFile.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 rounded-xl transition font-mono text-[10px] font-bold shadow-3xs hover:shadow-2xs select-none"
+                                title={`Buka berkas LPJ: ${sub.pettyCashFile.name}`}
+                              >
+                                📂 Drive Report
+                                <ExternalLink size={10} />
+                              </a>
+                            ) : (
+                              <div className="text-[10px] text-stone-400 font-mono">- Belum Diunggah -</div>
+                            )}
+                          </td>
+
+                          {/* Action button */}
+                          <td className="py-4.5 px-6 text-center print:hidden whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                title="Buka Detail / Cetak PDF"
+                                onClick={() => onSelect(sub)}
+                                className="p-2 hover:bg-stone-50 border border-transparent hover:border-stone-200 text-[#D4AF37] hover:text-[#Bca031] rounded-xl transition cursor-pointer shadow-3xs bg-white"
+                              >
+                                <Eye size={15} />
+                              </button>
+                              
+                              <button
+                                title="Edit Transaksi ini"
+                                onClick={() => onEdit(sub)}
+                                className="p-2 hover:bg-stone-50 border border-transparent hover:border-stone-200 text-sky-500 hover:text-sky-750 rounded-xl transition cursor-pointer shadow-3xs bg-white"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="py-24 text-center space-y-2 print:py-12">
+                  <Coins className="mx-auto text-stone-400" size={32} />
+                  <div className="text-stone-850 font-bold text-xs mt-1">Saringan Kosong</div>
+                  <p className="text-[11px] text-stone-400 max-w-sm mx-auto">Tidak ditemukan transaksi pengisian petty cash lapangan terdaftar yang sesuai dengan saringan Anda.</p>
+                  <button
+                    onClick={() => {
+                      setPettyCashCustodianFilter('All');
+                      setPettyCashMonthFilter('All');
+                      setPettyCashSearchQuery('');
+                    }}
+                    className="text-[11px] px-3 py-1 bg-stone-100 hover:bg-stone-150 rounded-lg font-bold text-stone-800 transition cursor-pointer"
+                  >
+                    Hapus Semua Saringan
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* PRINT OPTION SIGNATURE SECTION */}
+            <div className="hidden print:block font-sans text-xs pt-12 pb-6">
+              <div className="grid grid-cols-2 gap-8 text-center">
+                <div>
+                  <p className="text-stone-550 uppercase text-[9px] mb-14 font-mono">YANG MELAPORKAN (FINANCE)</p>
+                  <strong className="text-stone-850 block">{submissions[0]?.dibuatOleh || 'Nur Wahyudi'}</strong>
+                  <span className="text-[9.5px] text-stone-400">Divisi Keuangan & Verifikasi</span>
+                </div>
+                <div>
+                  <p className="text-stone-550 uppercase text-[9px] mb-14 font-mono">DISETUJUI OLEH OLEH (DIREKTUR UTAMA)</p>
+                  <strong className="text-stone-850 block">{submissions[0]?.disetujuiOleh2 || 'H. A. Nursyam Halid'}</strong>
+                  <span className="text-[9.5px] text-stone-400 font-sans">Direktur Utama</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
         </div>
       ) : (
         /* Log Riwayat Audit Detail View */

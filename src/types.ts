@@ -26,6 +26,11 @@ export interface Submission {
   invoiceDate?: string;
   invoiceAmount?: number;
   
+  // Petty Cash properties
+  isPettyCash?: boolean;
+  pettyCashCustodian?: string;
+  pettyCashFile?: { url: string; name: string };
+  
   // Google Drive attachment support
   googleDriveFileUrl?: string;
   googleDriveFileName?: string;
