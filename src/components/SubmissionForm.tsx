@@ -29,6 +29,19 @@ const COMMON_NAMES = {
   penerima: ['Andi Dhiya Salsabila', 'Mandiri Stationery', 'CV Abadi Teknik', 'Pratama Security', 'Kantin Sehat']
 };
 
+const extractGoogleDriveFileId = (url: string): string | null => {
+  if (!url) return null;
+  const dMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (dMatch && dMatch[1]) {
+    return dMatch[1];
+  }
+  const idMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch && idMatch[1]) {
+    return idMatch[1];
+  }
+  return null;
+};
+
 // ═════════ GOOGLE DRIVE DIR HIERARCHY HELPER ACTIONS ═════════
 const getOrCreateFolder = async (token: string, name: string, parentId: string): Promise<string> => {
   const cleanName = name.trim();
@@ -297,6 +310,16 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   const [buktiPembayaranFile, setBuktiPembayaranFile] = useState<File | null>(null);
   const [buktiPembayaranDrive, setBuktiPembayaranDrive] = useState<{ url: string; name: string } | null>(null);
 
+  // Google Drive File deletion confirmation warning states
+  const [driveFileToDelete, setDriveFileToDelete] = useState<{
+    url: string;
+    name: string;
+    onConfirm: () => void;
+    onForceDeleteFromApp: () => void;
+  } | null>(null);
+  const [fileToDeleteStatus, setFileToDeleteStatus] = useState<'idle' | 'deleting'>('idle');
+  const [fileToDeleteError, setFileToDeleteError] = useState<string | null>(null);
+
   // Check Drive connection status
   useEffect(() => {
     const drives = getConnectedDrives();
@@ -385,7 +408,164 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   };
 
   const handleDeleteFileItem = (id: string) => {
-    setFileItems(prev => prev.filter(item => item.id !== id));
+    const item = fileItems.find(f => f.id === id);
+    if (item && item.isDrive && item.url) {
+      setFileToDeleteError(null);
+      setDriveFileToDelete({
+        url: item.url,
+        name: item.name,
+        onConfirm: async () => {
+          setFileToDeleteStatus('deleting');
+          const fileId = extractGoogleDriveFileId(item.url || '');
+          if (fileId) {
+            const token = getStoredGoogleDriveToken();
+            if (token) {
+              try {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+                  method: 'DELETE',
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                if (res.ok || res.status === 204 || res.status === 404) {
+                  setFileItems(prev => prev.filter(f => f.id !== id));
+                  setDriveFileToDelete(null);
+                } else {
+                  const errText = await res.text();
+                  console.error('Delete Drive file failed:', errText);
+                  setFileToDeleteError(`Google Drive mengembalikan kesalahan (Status ${res.status}). Sesi mungkin sudah kedaluwarsa.`);
+                }
+              } catch (err: any) {
+                console.error('Error deleting file:', err);
+                setFileToDeleteError(`Gagal menghubungi Google Drive: ${err.message || err}`);
+              } finally {
+                setFileToDeleteStatus('idle');
+              }
+            } else {
+              setFileToDeleteError('Sesi koneksi Google Drive tidak aktif. Silakan hubungkan kembali akun Google Drive Anda.');
+              setFileToDeleteStatus('idle');
+            }
+          } else {
+            // No file ID could be extracted, just remove from local state
+            setFileItems(prev => prev.filter(f => f.id !== id));
+            setDriveFileToDelete(null);
+          }
+        },
+        onForceDeleteFromApp: () => {
+          setFileItems(prev => prev.filter(f => f.id !== id));
+          setDriveFileToDelete(null);
+          setFileToDeleteError(null);
+        }
+      });
+    } else {
+      setFileItems(prev => prev.filter(f => f.id !== id));
+    }
+  };
+
+  const handleDeleteBuktiPembayaran = () => {
+    if (buktiPembayaranDrive && buktiPembayaranDrive.url) {
+      setFileToDeleteError(null);
+      setDriveFileToDelete({
+        url: buktiPembayaranDrive.url,
+        name: buktiPembayaranDrive.name,
+        onConfirm: async () => {
+          setFileToDeleteStatus('deleting');
+          const fileId = extractGoogleDriveFileId(buktiPembayaranDrive.url);
+          if (fileId) {
+            const token = getStoredGoogleDriveToken();
+            if (token) {
+              try {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+                  method: 'DELETE',
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                if (res.ok || res.status === 204 || res.status === 404) {
+                  setBuktiPembayaranDrive(null);
+                  setDriveFileToDelete(null);
+                } else {
+                  const errText = await res.text();
+                  console.error('Delete Drive file failed:', errText);
+                  setFileToDeleteError(`Google Drive mengembalikan kesalahan (Status ${res.status}).`);
+                }
+              } catch (err: any) {
+                console.error('Error deleting file:', err);
+                setFileToDeleteError(`Gagal menghubungi Google Drive: ${err.message || err}`);
+              } finally {
+                setFileToDeleteStatus('idle');
+              }
+            } else {
+              setFileToDeleteError('Sesi koneksi Google Drive tidak aktif atau kadaluarsa.');
+              setFileToDeleteStatus('idle');
+            }
+          } else {
+            setBuktiPembayaranDrive(null);
+            setDriveFileToDelete(null);
+          }
+        },
+        onForceDeleteFromApp: () => {
+          setBuktiPembayaranDrive(null);
+          setDriveFileToDelete(null);
+          setFileToDeleteError(null);
+        }
+      });
+    } else {
+      setBuktiPembayaranDrive(null);
+    }
+  };
+
+  const handleDeletePettyCashDriveFile = () => {
+    if (pettyCashDriveFile && pettyCashDriveFile.url) {
+      setFileToDeleteError(null);
+      setDriveFileToDelete({
+        url: pettyCashDriveFile.url,
+        name: pettyCashDriveFile.name,
+        onConfirm: async () => {
+          setFileToDeleteStatus('deleting');
+          const fileId = extractGoogleDriveFileId(pettyCashDriveFile.url);
+          if (fileId) {
+            const token = getStoredGoogleDriveToken();
+            if (token) {
+              try {
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+                  method: 'DELETE',
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                if (res.ok || res.status === 204 || res.status === 404) {
+                  setPettyCashDriveFile(null);
+                  setDriveFileToDelete(null);
+                } else {
+                  const errText = await res.text();
+                  console.error('Delete Drive file failed:', errText);
+                  setFileToDeleteError(`Google Drive mengembalikan kesalahan (Status ${res.status}).`);
+                }
+              } catch (err: any) {
+                console.error('Error deleting file:', err);
+                setFileToDeleteError(`Gagal menghubungi Google Drive: ${err.message || err}`);
+              } finally {
+                setFileToDeleteStatus('idle');
+              }
+            } else {
+              setFileToDeleteError('Sesi koneksi Google Drive tidak aktif atau kadaluarsa.');
+              setFileToDeleteStatus('idle');
+            }
+          } else {
+            setPettyCashDriveFile(null);
+            setDriveFileToDelete(null);
+          }
+        },
+        onForceDeleteFromApp: () => {
+          setPettyCashDriveFile(null);
+          setDriveFileToDelete(null);
+          setFileToDeleteError(null);
+        }
+      });
+    } else {
+      setPettyCashDriveFile(null);
+    }
   };
 
   // Initialize form
@@ -1490,8 +1670,11 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              setPettyCashLocalFile(null);
-                              setPettyCashDriveFile(null);
+                              if (pettyCashLocalFile) {
+                                setPettyCashLocalFile(null);
+                              } else if (pettyCashDriveFile) {
+                                handleDeletePettyCashDriveFile();
+                              }
                             }}
                             className="p-1.5 hover:bg-rose-150 rounded-lg text-rose-600 transition cursor-pointer"
                             title="Hapus Berkas Laporan"
@@ -1949,7 +2132,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                         )}
                         <button
                           type="button"
-                          onClick={() => setBuktiPembayaranDrive(null)}
+                          onClick={handleDeleteBuktiPembayaran}
                           className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 p-1 rounded-md transition"
                         >
                           <Trash2 size={12} />
@@ -2235,6 +2418,77 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
           </button>
         </div>
       </form>
+
+      {/* Google Drive File Delete Confirmation Warning Modal */}
+      {driveFileToDelete && (
+        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white border border-rose-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-scale-up">
+            <div className="flex items-start gap-3">
+              <div className="p-3 rounded-xl bg-rose-50 text-rose-600 shrink-0">
+                <AlertCircle size={24} className="animate-bounce" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-stone-900 tracking-tight">PERINGATAN KERAS</h3>
+                <p className="text-xs text-rose-700 font-semibold bg-rose-50/70 p-2.5 rounded-lg border border-rose-100 leading-relaxed">
+                  Menghapus berkas lampiran ini melalui aplikasi akan otomatis menghapus berkas fisik tersebut secara permanen dari sistem Google Drive Anda!
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl space-y-1">
+              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider font-mono block">Nama Berkas di Drive</span>
+              <span className="text-xs font-bold text-stone-800 break-all block">{driveFileToDelete.name}</span>
+            </div>
+
+            {fileToDeleteError && (
+              <div className="text-[11px] text-rose-650 font-semibold bg-rose-50 border border-rose-100 p-2.5 rounded-lg flex items-start gap-1.5 leading-relaxed">
+                <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                <span>{fileToDeleteError}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                disabled={fileToDeleteStatus === 'deleting'}
+                onClick={driveFileToDelete.onConfirm}
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition text-xs shadow-3xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {fileToDeleteStatus === 'deleting' ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin text-white" />
+                    <span>Menghapus Berkas di Google Drive...</span>
+                  </>
+                ) : (
+                  <span>Ya, Hapus Permanen dari Google Drive & Aplikasi</span>
+                )}
+              </button>
+
+              {fileToDeleteError && (
+                <button
+                  type="button"
+                  onClick={driveFileToDelete.onForceDeleteFromApp}
+                  className="w-full py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-250 font-bold rounded-xl transition text-xs cursor-pointer"
+                >
+                  Hapus Saja dari Aplikasi (Abaikan Error Drive)
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={fileToDeleteStatus === 'deleting'}
+                onClick={() => {
+                  setDriveFileToDelete(null);
+                  setFileToDeleteError(null);
+                }}
+                className="w-full py-2 bg-stone-50 hover:bg-stone-100 text-stone-600 border border-stone-200 font-bold rounded-xl transition text-xs cursor-pointer disabled:opacity-50"
+              >
+                Batalkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

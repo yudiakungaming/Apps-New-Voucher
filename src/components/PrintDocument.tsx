@@ -950,35 +950,35 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
               <table className="w-full border-collapse border-[1.5px] border-black text-sm table-fixed">
                 <thead>
                   <tr className="bg-[#D9D9D9]/30 border-b-[1.5px] border-black text-black font-bold uppercase text-xs">
-                    <th className="border-r border-black py-2 px-1 text-center w-[5%]">NO</th>
-                    <th className="border-r border-black py-2 px-3 text-left w-[49%]">ITEM DETIL (INVOICE / DESKRIPSI)</th>
-                    <th className="border-r border-black py-2 px-2 text-center w-[10%]">VOLUME</th>
-                    <th className="border-r border-black py-2 px-3 text-center w-[14%]">TOTAL (RP)</th>
-                    <th className="py-2 px-3 text-left w-[22%]">KETERANGAN</th>
+                    <th className="border-r border-black py-2.5 px-1 text-center w-[5%]">NO</th>
+                    <th className="border-r border-black py-2.5 px-3 text-left w-[41%]">ITEM DETIL (INVOICE / DESKRIPSI)</th>
+                    <th className="border-r border-black py-2.5 px-2 text-center w-[8%]">VOLUME</th>
+                    <th className="border-r border-black py-2.5 px-3 text-center w-[24%]">TOTAL (RP)</th>
+                    <th className="py-2.5 px-3 text-left w-[22%]">KETERANGAN</th>
                   </tr>
                 </thead>
                 <tbody>
                   {submission.items.map((item, idx) => (
                     <tr key={item.id} className="border-b border-black align-top text-black">
-                      <td className="border-r border-black py-2 px-1 text-center font-mono text-xs">{idx + 1}</td>
-                      <td className="border-r border-black py-2 px-3 font-semibold text-xs leading-relaxed break-words whitespace-pre-wrap text-stone-900">{item.item}</td>
-                      <td className="border-r border-black py-2 px-2 text-center text-xs text-stone-800">{item.jumlahVolume || '-'}</td>
-                      <td className="border-r border-black py-2 px-3 text-right font-mono font-bold text-xs font-semibold">
+                      <td className="border-r border-black py-3 px-1 text-center font-mono text-xs">{idx + 1}</td>
+                      <td className="border-r border-black py-3 px-3 font-semibold text-xs leading-relaxed break-words whitespace-pre-wrap text-stone-900">{item.item}</td>
+                      <td className="border-r border-black py-3 px-2 text-center text-xs text-stone-800">{item.jumlahVolume || '-'}</td>
+                      <td className="border-r border-black py-3 px-3 text-right font-mono font-bold text-xs font-semibold">
                         {formatRupiah(item.total)}
                       </td>
-                      <td className="py-2 px-3 text-stone-700 text-[10px] italic break-all break-words whitespace-pre-wrap leading-tight text-left">{item.keterangan || '-'}</td>
+                      <td className="py-3 px-3 text-stone-700 text-[10px] italic break-all break-words whitespace-pre-wrap leading-tight text-left">{item.keterangan || '-'}</td>
                     </tr>
                   ))}
                   
                   {/* Total Row */}
                   <tr className="border-t-[1.5px] border-black font-bold text-black bg-stone-50">
-                    <td colSpan={3} className="border-r border-black py-2 px-4 text-center uppercase tracking-wider text-xs">
+                    <td colSpan={3} className="border-r border-black py-3 px-4 text-center uppercase tracking-wider text-xs">
                        TOTAL PENYERAHAN
                     </td>
-                    <td className="border-r border-black py-2 px-3 text-right font-mono text-sm font-bold bg-amber-50/10">
+                    <td className="border-r border-black py-3 px-3 text-right font-mono text-sm font-bold bg-amber-50/10">
                       {formatRupiah(grandTotal)}
                     </td>
-                    <td className="py-2 px-3 bg-stone-50"></td>
+                    <td className="py-3 px-3 bg-stone-50"></td>
                   </tr>
                 </tbody>
               </table>
