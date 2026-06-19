@@ -12,7 +12,7 @@ import {
   formatDateIndonesian, 
   convertImageToPdf 
 } from '../utils';
-import { Cloud, Loader2, CheckCircle2, AlertTriangle, Play, RefreshCw, Layers, FolderSync } from 'lucide-react';
+import { Cloud, Loader2, CheckCircle2, AlertTriangle, Play, RefreshCw, Layers, FolderSync, Trash2, Sparkles } from 'lucide-react';
 
 interface DriveSyncMassProps {
   submissions: Submission[];
@@ -27,6 +27,7 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
   // Progress states
   const [isSyncing, setIsSyncing] = useState(false);
   const [isStopRequested, setIsStopRequested] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
   const stopRequestedRef = useRef(false);
   const [syncProgress, setSyncProgress] = useState(0); // overall percentage
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -299,6 +300,92 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
       company = 'nmsa';
     }
     return { company };
+  };
+
+  const handleCleanDriveTrash = async () => {
+    const token = getStoredGoogleDriveToken();
+    if (!token) {
+      setErrorLog('Google Drive belum terhubung. Hubungkan akun terlebih dahulu.');
+      return;
+    }
+
+    if (!window.confirm("Apakah Anda yakin ingin merapikan folder Google Drive?\nTindakan ini akan memindahkan folder-folder pelengkap yang salah (seperti BRU, PPI, REFF, T03...) ke tempat Sampah Google Drive agar terlihat rapi.\n\nPASTIKAN Anda telah menjalankan 'Sinkronkan Ke Google Drive (1-Klik)' terlebih dahulu agar semua data penting Anda sudah berada di folder NMSA yang aman.")) {
+      return;
+    }
+
+    setIsCleaning(true);
+    setLogs([]);
+    setErrorLog(null);
+    addLog(`[BERSIHKAN] Memulai proses merapikan folder di Google Drive...`);
+
+    try {
+      // 1. Find or get root ID / 'Voucher-APP' folder ID
+      const queryRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='Voucher-APP'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id)`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!queryRes.ok) {
+        throw new Error('Gagal mengakses folder Voucher-APP di Google Drive');
+      }
+      const queryData = await queryRes.json();
+      if (!queryData.files || queryData.files.length === 0) {
+        throw new Error('Folder "Voucher-APP" tidak ditemukan di Google Drive Anda.');
+      }
+      const voucherAppId = queryData.files[0].id;
+
+      // 2. List all immediate subfolders of 'Voucher-APP'
+      const listRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q='${voucherAppId}'+in+parents+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name)&pageSize=100`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!listRes.ok) {
+        throw new Error('Gagal membaca isi folder Voucher-APP');
+      }
+      const listData = await listRes.json();
+      const files = listData.files || [];
+
+      // Filter subfolders that are NOT 'nmsa', 'nmsa-backup', and NOT 'petty cash'
+      const messyFolders = files.filter((f: any) => {
+        const lowerName = f.name.trim().toLowerCase();
+        return lowerName !== 'nmsa' && lowerName !== 'petty cash';
+      });
+
+      if (messyFolders.length === 0) {
+        addLog(`[BERSIHKAN] Folder Anda sudah bersih! Tidak ada folder asing atau berantakan yang terdeteksi.`);
+        setIsCleaning(false);
+        return;
+      }
+
+      addLog(`[BERSIHKAN] Menemukan ${messyFolders.length} folder berantakan: ${messyFolders.map((f: any) => f.name).join(', ')}`);
+
+      let cleanSuccess = 0;
+      for (const folder of messyFolders) {
+        addLog(`[BERSIHKAN] Memindahkan folder "${folder.name}" ke Sampah (Trash)...`);
+        const patchRes = await fetch(`https://www.googleapis.com/drive/v3/files/${folder.id}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ trashed: true })
+        });
+
+        if (patchRes.ok) {
+          addLog(`[BERSIHKAN] [SUKSES] Folder "${folder.name}" berhasil dipindahkan ke Sampah.`);
+          cleanSuccess++;
+        } else {
+          addLog(`[BERSIHKAN] [PENGINGAT] Gagal memindahkan folder "${folder.name}".`);
+        }
+      }
+
+      addLog(`[BERSIHKAN] SELESAI UNTUK MERAPIKAN! Berhasil memindahkan ${cleanSuccess} folder berantakan ke Sampah Google Drive.`);
+      addLog(`[BERSIHKAN] Sekarang tampilan Google Drive Anda telah rapi dan hanya berisi folder utama: "NMSA" & "Petty Cash".`);
+    } catch (err: any) {
+      setErrorLog(err.message || 'Gagal merapikan folder.' );
+      addLog(`[BERSIHKAN] Eror: ${err.message || err}`);
+    } finally {
+      setIsCleaning(false);
+    }
   };
 
   const handleStopSync = () => {
@@ -656,6 +743,38 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Clean Up Section */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-stone-50 border border-stone-200 p-4 rounded-xl">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-stone-800 leading-tight flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-amber-500" />
+                    Merapikan Google Drive (Hapus Folder Berantakan)
+                  </p>
+                  <p className="text-[10.5px] text-stone-600">
+                    Pindahkan semua folder asing di luar <strong className="text-stone-800">NMSA</strong> dan <strong className="text-stone-800">Petty Cash</strong> (seperti BRU, PPI, REFF, T03...) langsung ke Sampah Google Drive agar teratur dan rapi.
+                  </p>
+                </div>
+                
+                <button
+                  type="button"
+                  disabled={isSyncing || isCleaning}
+                  onClick={handleCleanDriveTrash}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs font-black uppercase tracking-wider text-white bg-stone-700 hover:bg-stone-800 disabled:bg-stone-300 rounded-xl shadow-sm transition disabled:cursor-not-allowed cursor-pointer shrink-0"
+                >
+                  {isCleaning ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Merapikan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} />
+                      <span>Rapikan Tampilan Drive</span>
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Progress Panel */}
