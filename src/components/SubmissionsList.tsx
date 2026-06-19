@@ -1345,7 +1345,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 print:block">
             
             {/* LEFT COLUMN: MONTH-BY-MONTH STRUCTURED MATRIX CONTAINER */}
             <div className="lg:col-span-1 space-y-4 print:hidden">
@@ -1448,7 +1448,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
             </div>
 
             {/* RIGHT COLUMN: MAIN INVOICE DETAIL SHEET */}
-            <div className="lg:col-span-3 space-y-4">
+            <div className="lg:col-span-3 space-y-4 print:w-full print:block">
               <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden animate-fade-in print:border-none print:shadow-none">
                 
                 {/* Search & Filter section header */}
@@ -1707,17 +1707,17 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
 
                 {/* Print only detailed list table */}
                 <div className="hidden print:block font-sans text-xs pt-4">
-                  <span className="block font-mono text-[10px] font-bold uppercase text-stone-500 mb-2">Lampiran Rekapitulasi Detail Transaksi Invoice</span>
-                  <table className="w-full text-left border-collapse border border-stone-300">
+                  <span className="block font-mono text-[9px] font-bold uppercase text-stone-500 mb-2">Lampiran Rekapitulasi Detail Transaksi Invoice</span>
+                  <table className="w-full text-left border-collapse border border-stone-200 table-fixed">
                     <thead>
-                      <tr className="bg-stone-200/50 text-stone-800 text-[9px] uppercase font-mono border-b border-stone-300">
-                        <th className="p-2 border border-stone-300">Tanggal</th>
-                        <th className="p-2 border border-stone-300">Voucher & Invoice#</th>
-                        <th className="p-2 border border-stone-300">Vendor / Penerima</th>
-                        <th className="p-2 border border-stone-300">Kategori</th>
-                        <th className="p-2 border border-stone-300 text-right">Nominal</th>
-                        <th className="p-2 border border-stone-300 text-center">Status</th>
-                        <th className="p-2 border border-stone-300">Catatan</th>
+                      <tr className="bg-stone-50 text-stone-800 text-[8px] uppercase font-mono border-b border-stone-250">
+                        <th className="p-2 border border-stone-150 w-[11%]">Tanggal</th>
+                        <th className="p-2 border border-stone-150 w-[18%]">Voucher & Inv#</th>
+                        <th className="p-2 border border-stone-150 w-[18%]">Vendor / Penerima</th>
+                        <th className="p-2 border border-stone-150 w-[22%]">Kategori</th>
+                        <th className="p-2 border border-stone-150 w-[13%] text-right font-bold">Nominal</th>
+                        <th className="p-2 border border-stone-150 w-[8%] text-center">Status</th>
+                        <th className="p-2 border border-stone-150 w-[10%]">Catatan</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1726,18 +1726,18 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                         const grandTotal = sub.items.reduce((s, i) => s + (i.total || 0), 0);
                         const invoiceAmtComputed = typeof sub.invoiceAmount === 'number' ? sub.invoiceAmount : grandTotal;
                         return (
-                          <tr key={sub.id} className="border-b border-stone-300 font-sans text-[10px]">
-                            <td className="p-2 border border-stone-300 font-mono">{sub.tanggal}</td>
-                            <td className="p-2 border border-stone-300 font-bold font-mono">
+                          <tr key={sub.id} className="border-b border-stone-200 font-sans text-[8.5px] text-stone-850">
+                            <td className="p-2 border border-stone-150 font-mono whitespace-nowrap">{sub.tanggal}</td>
+                            <td className="p-2 border border-stone-150 font-bold font-mono break-all whitespace-normal leading-tight">
                               {sub.invoiceNumber || sub.kode}
                             </td>
-                            <td className="p-2 border border-stone-300 font-mono">{sub.dibayarkanKepada}</td>
-                            <td className="p-2 border border-stone-300">{sub.jenisPengajuan}</td>
-                            <td className="p-2 border border-stone-300 text-right font-bold font-mono">Rp {invoiceAmtComputed.toLocaleString('id-ID')}</td>
-                            <td className="p-2 border border-stone-300 text-center uppercase font-mono font-bold">
-                              {isLunas ? 'LUNAS (BUKTI ADA)' : 'PENDING'}
+                            <td className="p-2 border border-stone-150 font-sans leading-snug break-words whitespace-normal">{sub.dibayarkanKepada}</td>
+                            <td className="p-2 border border-stone-150 leading-relaxed break-words whitespace-normal">{sub.jenisPengajuan}</td>
+                            <td className="p-2 border border-stone-150 text-right font-bold font-mono whitespace-nowrap">Rp {invoiceAmtComputed.toLocaleString('id-ID')}</td>
+                            <td className="p-2 border border-stone-150 text-center font-mono font-bold text-[7.5px] leading-tight">
+                              {isLunas ? 'LUNAS' : 'PENDING'}
                             </td>
-                            <td className="p-2 border border-stone-300 text-[9px] text-stone-500 italic max-w-[120px] truncate">{sub.notes || '-'}</td>
+                            <td className="p-2 border border-stone-150 text-[8px] text-stone-500 italic break-words whitespace-normal leading-tight">{sub.notes || '-'}</td>
                           </tr>
                         );
                       })}
@@ -1859,7 +1859,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 print:block">
             {/* LEFT COLUMN: LOCATION TABS SIDEBAR (print:hidden) */}
             <div className="lg:col-span-1 space-y-4 print:hidden">
               <div className="bg-white rounded-2xl border border-stone-200 p-4.5 space-y-3 shadow-3xs">
@@ -1919,7 +1919,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
             </div>
 
             {/* RIGHT COLUMN: MAIN TABLE VIEW AND TRANSACTIONS */}
-            <div className="lg:col-span-3 space-y-4">
+            <div className="lg:col-span-3 space-y-4 print:w-full print:block">
               <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden select-none">
                 {/* Search & Filter table header */}
                 <div className="px-6 py-4.5 bg-stone-50 border-b border-stone-150 flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
@@ -2055,30 +2055,30 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                 {/* Print only detailed list table */}
                 <div className="hidden print:block font-sans text-xs pt-2">
                   <span className="block font-mono text-[8px] font-bold uppercase text-stone-500 mb-2">Lampiran Detail Kewajiban Pembayaran (All Outstanding Liabilities)</span>
-                  <table className="w-full text-left border-collapse border border-stone-300">
+                  <table className="w-full text-left border-collapse border border-stone-200 table-fixed">
                     <thead>
-                      <tr className="bg-stone-200/50 text-stone-800 text-[8px] uppercase font-mono border-b border-stone-300">
-                        <th className="p-1 border border-stone-300">No. Voucher</th>
-                        <th className="p-1 border border-stone-300">Tanggal</th>
-                        <th className="p-1 border border-stone-300">Sektor</th>
-                        <th className="p-1 border border-stone-300">Uraian / Pekerjaan / Item</th>
-                        <th className="p-1 border border-stone-300">Vendor / Penerima Kas</th>
-                        <th className="p-1 border border-stone-350 text-right">Outstanding (Rp)</th>
-                        <th className="p-1 border border-stone-300">Cara Bayar</th>
+                      <tr className="bg-stone-50 text-stone-800 text-[8px] uppercase font-mono border-b border-stone-250">
+                        <th className="p-2 border border-stone-150 w-[14%] whitespace-nowrap">No. Voucher</th>
+                        <th className="p-2 border border-stone-150 w-[11%]">Tanggal</th>
+                        <th className="p-2 border border-stone-150 w-[8%] text-center">Sektor</th>
+                        <th className="p-2 border border-stone-150 w-[30%]">Uraian / Pekerjaan / Item</th>
+                        <th className="p-2 border border-stone-150 w-[15%]">Vendor / Penerima Kas</th>
+                        <th className="p-2 border border-stone-150 w-[14%] text-right font-black">Outstanding (Rp)</th>
+                        <th className="p-2 border border-stone-150 w-[8%] text-center">Cara Bayar</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredUnpaidSubmissions.map((sub, idx) => {
                         const sumTotal = sub.items.reduce((s, i) => s + i.total, 0);
                         return (
-                          <tr key={sub.id} className="border-b border-stone-300 font-mono text-[9px]">
-                            <td className="p-1 border border-stone-300 font-bold">{sub.kode}</td>
-                            <td className="p-1 border border-stone-300 whitespace-nowrap">{sub.tanggal}</td>
-                            <td className="p-1 border border-stone-300 text-center uppercase font-mono">{sub.lokasi}</td>
-                            <td className="p-1 border border-stone-300 font-sans">{sub.jenisPengajuan} - {getIsiInvoice(sub)}</td>
-                            <td className="p-1 border border-stone-300 font-sans">{sub.dibayarkanKepada}</td>
-                            <td className="p-1 border border-stone-300 text-right font-bold">Rp {sumTotal.toLocaleString('id-ID')}</td>
-                            <td className="p-1 border border-stone-300 text-center font-sans">{sub.dibayarkanDengan}</td>
+                          <tr key={sub.id} className="border-b border-stone-200 font-mono text-[8.5px] text-stone-800">
+                            <td className="p-2 border border-stone-150 font-bold whitespace-nowrap break-all font-mono">{sub.kode}</td>
+                            <td className="p-2 border border-stone-150 whitespace-nowrap">{sub.tanggal}</td>
+                            <td className="p-2 border border-stone-150 text-center uppercase font-mono">{sub.lokasi}</td>
+                            <td className="p-2 border border-stone-150 font-sans leading-relaxed break-words whitespace-normal">{sub.jenisPengajuan} - {getIsiInvoice(sub)}</td>
+                            <td className="p-2 border border-stone-150 font-sans leading-snug break-words whitespace-normal">{sub.dibayarkanKepada}</td>
+                            <td className="p-2 border border-stone-150 text-right font-bold text-stone-900 font-mono whitespace-nowrap">Rp {sumTotal.toLocaleString('id-ID')}</td>
+                            <td className="p-2 border border-stone-150 text-center font-sans text-[8px] leading-tight break-words whitespace-normal">{sub.dibayarkanDengan}</td>
                           </tr>
                         );
                       })}
