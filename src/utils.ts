@@ -8,24 +8,87 @@ export interface PdfInputSource {
 }
 
 function wrapText(text: string, maxWidth: number, font: any, fontSize: number): string[] {
-  const words = text.split(' ');
+  if (!text) return [];
+  const paragraphs = text.split(/\r?\n/);
   const lines: string[] = [];
-  let currentLine = '';
 
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const width = font.widthOfTextAtSize(testLine, fontSize);
-    if (width > maxWidth) {
+  for (const para of paragraphs) {
+    const sanitizedPara = sanitizeString(para);
+    const words = sanitizedPara.split(' ');
+    let currentLine = '';
+
+    for (const word of words) {
+      if (!word) continue;
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const width = font.widthOfTextAtSize(testLine, fontSize);
+      if (width > maxWidth) {
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
       lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
     }
   }
-  if (currentLine) {
-    lines.push(currentLine);
-  }
   return lines;
+}
+
+export function sanitizeString(str: string | null | undefined): string {
+  if (!str) return '';
+  
+  // 1. Map smart punctuation and other common symbols to standard ASCII equivalents
+  const conversionMap: { [key: string]: string } = {
+    '“': '"',
+    '”': '"',
+    '‘': "'",
+    '’': "'",
+    '–': '-',
+    '—': '-',
+    '…': '...',
+    '•': '*',
+    '™': 'TM',
+    '®': '(R)',
+    '©': '(C)',
+    '′': "'",
+    '″': '"',
+  };
+  
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (conversionMap[char] !== undefined) {
+      result += conversionMap[char];
+    } else {
+      result += char;
+    }
+  }
+  
+  // 2. Filter out anything that is not in the standard safe range of WinAnsi
+  // Safe characters are from 32 to 126, and from 160 to 255.
+  let cleanResult = '';
+  for (let i = 0; i < result.length; i++) {
+    const code = result.charCodeAt(i);
+    if ((code >= 32 && code <= 126) || (code >= 160 && code <= 255)) {
+      cleanResult += result[i];
+    } else {
+      // Replaces control characters or emojis with clean spacing
+      if (code !== 10 && code !== 13 && code !== 9) {
+        cleanResult += ' ';
+      }
+    }
+  }
+  
+  return cleanResult;
+}
+
+export function cleanSingleLine(text: string | null | undefined): string {
+  if (!text) return '';
+  const flattened = text.replace(/[\r\n\t]+/g, ' ');
+  return sanitizeString(flattened);
 }
 
 export async function generateF1PdfBytes(submission: any, grandTotal: number): Promise<Uint8Array> {
@@ -50,8 +113,8 @@ export async function generateF1PdfBytes(submission: any, grandTotal: number): P
     borderWidth: 1.5,
     color: rgb(0.95, 0.95, 0.95)
   });
-  page.drawText(submission.kode || '', { x: 380, y: 782, size: 10, font: fontMono });
-  page.drawText(`Tanggal : ${formatDateIndonesian(submission.tanggal)}`, { x: 370, y: 755, size: 9, font: fontRegular });
+  page.drawText(cleanSingleLine(submission.kode), { x: 380, y: 782, size: 10, font: fontMono });
+  page.drawText(`Tanggal : ${cleanSingleLine(formatDateIndonesian(submission.tanggal))}`, { x: 370, y: 755, size: 9, font: fontRegular });
 
   // Draw title in box
   page.drawRectangle({
@@ -67,10 +130,10 @@ export async function generateF1PdfBytes(submission: any, grandTotal: number): P
 
   // Draw metadata fields
   const yStart = 675;
-  page.drawText('Dibayarkan Kepada  :   ' + (submission.dibayarkanKepada || ''), { x: 45, y: yStart, size: 10, font: fontBold });
+  page.drawText('Dibayarkan Kepada  :   ' + cleanSingleLine(submission.dibayarkanKepada), { x: 45, y: yStart, size: 10, font: fontBold });
   
-  page.drawText('Jenis Pengajuan       :   ' + (submission.jenisPengajuan || ''), { x: 45, y: yStart - 18, size: 10, font: fontRegular });
-  page.drawText('Kode                       :   ' + (submission.kode || ''), { x: 45, y: yStart - 36, size: 10, font: fontMono });
+  page.drawText('Jenis Pengajuan       :   ' + cleanSingleLine(submission.jenisPengajuan), { x: 45, y: yStart - 18, size: 10, font: fontRegular });
+  page.drawText('Kode                       :   ' + cleanSingleLine(submission.kode), { x: 45, y: yStart - 36, size: 10, font: fontMono });
   
   // Dibayarkan dengan
   page.drawText('Dibayarkan dengan   : ', { x: 45, y: yStart - 54, size: 10, font: fontRegular });
@@ -189,17 +252,17 @@ export async function generateF1PdfBytes(submission: any, grandTotal: number): P
   page.drawText('Dibukukan', { x: 40 + blockW * 3 + 30, y: curY - 11, size: 8, font: fontBold });
 
   // Signature names
-  page.drawText(submission.diverifikasiOleh || '', { x: 45, y: sigTableY + 15, size: 8, font: fontBold });
-  page.drawText(submission.diverifikasiJabatan || '', { x: 45, y: sigTableY + 5, size: 7, font: fontRegular });
+  page.drawText(cleanSingleLine(submission.diverifikasiOleh), { x: 45, y: sigTableY + 15, size: 8, font: fontBold });
+  page.drawText(cleanSingleLine(submission.diverifikasiJabatan), { x: 45, y: sigTableY + 5, size: 7, font: fontRegular });
 
-  page.drawText(submission.disetujuiOleh || '', { x: 45 + blockW, y: sigTableY + 15, size: 8, font: fontBold });
+  page.drawText(cleanSingleLine(submission.disetujuiOleh), { x: 45 + blockW, y: sigTableY + 15, size: 8, font: fontBold });
   page.drawText('Dir Keuangan', { x: 45 + blockW, y: sigTableY + 5, size: 7, font: fontRegular });
 
-  page.drawText(submission.disetujuiOleh2 || '', { x: 45 + blockW * 2, y: sigTableY + 15, size: 8, font: fontBold });
-  page.drawText(submission.disetujuiJabatan2 || 'DIREKTUR', { x: 45 + blockW * 2, y: sigTableY + 5, size: 7, font: fontRegular });
+  page.drawText(cleanSingleLine(submission.disetujuiOleh2), { x: 45 + blockW * 2, y: sigTableY + 15, size: 8, font: fontBold });
+  page.drawText(cleanSingleLine(submission.disetujuiJabatan2 || 'DIREKTUR'), { x: 45 + blockW * 2, y: sigTableY + 5, size: 7, font: fontRegular });
 
-  page.drawText(submission.dibukukanOleh || '', { x: 45 + blockW * 3, y: sigTableY + 15, size: 8, font: fontBold });
-  page.drawText(submission.dibukukanJabatan || '', { x: 45 + blockW * 3, y: sigTableY + 5, size: 7, font: fontRegular });
+  page.drawText(cleanSingleLine(submission.dibukukanOleh), { x: 45 + blockW * 3, y: sigTableY + 15, size: 8, font: fontBold });
+  page.drawText(cleanSingleLine(submission.dibukukanJabatan), { x: 45 + blockW * 3, y: sigTableY + 5, size: 7, font: fontRegular });
 
   return await pdfDoc.save();
 }
@@ -238,10 +301,10 @@ export async function generateF2PdfBytes(submission: any, grandTotal: number): P
     borderWidth: 1.5,
   });
   
-  const txtLokasi = `Lokasi                      :  ${submission.lokasi || ''}`;
-  const txtTanggal = `Tanggal                    :  ${formatDateIndonesian(submission.tanggal)}`;
-  const txtJenis = `Jenis Pengajuan       :  ${submission.jenisPengajuan || ''}`;
-  const txtKode = `Kode                       :  ${submission.kode || ''}`;
+  const txtLokasi = `Lokasi                      :  ${cleanSingleLine(submission.lokasi)}`;
+  const txtTanggal = `Tanggal                    :  ${cleanSingleLine(formatDateIndonesian(submission.tanggal))}`;
+  const txtJenis = `Jenis Pengajuan       :  ${cleanSingleLine(submission.jenisPengajuan)}`;
+  const txtKode = `Kode                       :  ${cleanSingleLine(submission.kode)}`;
   
   page.drawText(txtLokasi, { x: 55, y: 680, size: 10, font: fontRegular });
   page.drawText(txtTanggal, { x: 55, y: 663, size: 10, font: fontRegular });
@@ -297,7 +360,7 @@ export async function generateF2PdfBytes(submission: any, grandTotal: number): P
       page.drawText(descWrapped[dLine], { x: 75, y: curY - 15 - (dLine * 11), size: 8, font: fontBold });
     }
     
-    page.drawText(item.jumlahVolume || '-', { x: 325, y: curY - 15, size: 8, font: fontRegular });
+    page.drawText(cleanSingleLine(item.jumlahVolume || '-'), { x: 325, y: curY - 15, size: 8, font: fontRegular });
     page.drawText(formatRupiah(item.total), { x: 395, y: curY - 15, size: 8, font: fontBold });
     
     for (let kLine = 0; kLine < ketWrapped.length; kLine++) {
@@ -326,11 +389,11 @@ export async function generateF2PdfBytes(submission: any, grandTotal: number): P
   // Signatures
   const sigY = curY - 80;
   page.drawText('Dibuat Oleh', { x: 90, y: curY - 30, size: 10, font: fontRegular });
-  page.drawText(submission.dibuatOleh || '', { x: 70, y: sigY, size: 10, font: fontBold });
+  page.drawText(cleanSingleLine(submission.dibuatOleh), { x: 70, y: sigY, size: 10, font: fontBold });
   page.drawLine({ start: { x: 60, y: sigY - 2 }, end: { x: 200, y: sigY - 2 }, thickness: 1 });
   
   page.drawText('Disetujui', { x: 410, y: curY - 30, size: 10, font: fontRegular });
-  page.drawText(submission.disetujuiOleh || '', { x: 390, y: sigY, size: 10, font: fontBold });
+  page.drawText(cleanSingleLine(submission.disetujuiOleh), { x: 390, y: sigY, size: 10, font: fontBold });
   page.drawLine({ start: { x: 370, y: sigY - 2 }, end: { x: 500, y: sigY - 2 }, thickness: 1 });
   
   // Notes block
