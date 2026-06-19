@@ -791,7 +791,9 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
             'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
             'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
           ];
-          monthStr = INDONESIAN_MONTHS[monthIdx] || 'Januari';
+          const mNum = monthIdx + 1;
+          const mName = INDONESIAN_MONTHS[monthIdx] || 'Januari';
+          monthStr = `${mNum}. ${mName}`;
           dayStr = String(parseInt(parts[2], 10));
         } else {
           const dateObj = new Date();
@@ -800,7 +802,9 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
             'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
             'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
           ];
-          monthStr = INDONESIAN_MONTHS[dateObj.getMonth()];
+          const mNum = dateObj.getMonth() + 1;
+          const mName = INDONESIAN_MONTHS[dateObj.getMonth()];
+          monthStr = `${mNum}. ${mName}`;
           dayStr = String(dateObj.getDate());
         }
 

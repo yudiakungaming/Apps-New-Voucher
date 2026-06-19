@@ -5,6 +5,7 @@ import { SubmissionsList } from './components/SubmissionsList';
 import { SubmissionForm } from './components/SubmissionForm';
 import { PrintDocument } from './components/PrintDocument';
 import { JsonBackup } from './components/JsonBackup';
+import { DriveSyncMass } from './components/DriveSyncMass';
 import { NusantaraLogo } from './components/NusantaraLogo';
 import { SheetsImport } from './components/SheetsImport';
 import { FirebaseSyncConfig } from './components/FirebaseSyncConfig';
@@ -688,7 +689,8 @@ export default function App() {
             />
 
             {/* Backup / Export-Import Section */}
-            <div className="pt-4 print:hidden">
+            <div className="pt-4 print:hidden space-y-4">
+              <DriveSyncMass submissions={submissions} onUpdateSubmissions={saveSubmissionsToStorage} />
               <JsonBackup submissions={submissions} onImport={handleImportJson} />
             </div>
           </div>
