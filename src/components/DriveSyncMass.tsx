@@ -26,6 +26,8 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
   
   // Progress states
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isStopRequested, setIsStopRequested] = useState(false);
+  const stopRequestedRef = useRef(false);
   const [syncProgress, setSyncProgress] = useState(0); // overall percentage
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentStepText, setCurrentStepText] = useState('');
@@ -259,6 +261,52 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
     };
   };
 
+  const parseCompanyAndSequenceLocal = (kodeStr: string): { company: string } => {
+    const clean = (kodeStr || '').trim();
+    const upperClean = clean.toUpperCase();
+    let company = 'nmsa'; // Default company
+    if (upperClean.includes('NMSA')) {
+      company = 'nmsa';
+    } else {
+      const parts = clean.split(/[\s/\\_-]+/);
+      if (parts.length > 0) {
+        const p0 = parts[0].toUpperCase();
+        const isPrefix = ['BKK', 'BKM', 'INV', 'T', 'VOUCHER', 'LPJ'].includes(p0);
+        if (isPrefix && parts.length >= 2) {
+          const potentialComp = parts[1].toLowerCase();
+          const isNumeric = /^\d+$/.test(potentialComp);
+          const isMonthNumeral = ['i','ii','iii','iv','v','vi','vii','viii','ix','x','xi','xii'].includes(potentialComp);
+          const isTooShortOrLong = potentialComp.length < 2 || potentialComp.length > 15;
+          if (!isNumeric && !isMonthNumeral && !isTooShortOrLong) {
+            company = potentialComp;
+          } else {
+            company = 'nmsa';
+          }
+        } else if (!isPrefix) {
+          const p0Lower = parts[0].toLowerCase();
+          const isNumeric = /^\d+$/.test(p0Lower);
+          const isTooShortOrLong = p0Lower.length < 2 || p0Lower.length > 15;
+          if (!isNumeric && !isTooShortOrLong) {
+            company = p0Lower;
+          } else {
+            company = 'nmsa';
+          }
+        }
+      }
+    }
+    company = company.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    if (!company || /^\d+$/.test(company)) {
+      company = 'nmsa';
+    }
+    return { company };
+  };
+
+  const handleStopSync = () => {
+    setIsStopRequested(true);
+    stopRequestedRef.current = true;
+    addLog('[SISTEM] Mengirim permintaan pembatalan... Sinkronisasi akan dihentikan setelah memproses berkas saat ini.');
+  };
+
   const handleStartSync = async () => {
     if (submissions.length === 0) {
       setErrorLog('Tidak ada transaksi untuk disinkronkan.');
@@ -272,6 +320,8 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
     }
 
     setIsSyncing(true);
+    setIsStopRequested(false);
+    stopRequestedRef.current = false;
     setLogs([]);
     setErrorLog(null);
     setSuccessCount(0);
@@ -279,8 +329,16 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
     addLog(`Memulai sinkronisasi massal seluruh (${submissions.length}) transaksi ke Google Drive...`);
 
     const updatedSubmissions = [...submissions];
+    let actualSuccesses = 0;
+    let actualFailures = 0;
 
     for (let index = 0; index < submissions.length; index++) {
+      if (stopRequestedRef.current) {
+        addLog(`== SINKRONISASI DIHENTIKAN OLEH PENGGUNA ==`);
+        addLog(`Berhasil menyimpan progres sementara untuk ${actualSuccesses + actualFailures} dokumen.`);
+        break;
+      }
+
       setCurrentIndex(index);
       const sub = submissions[index];
       const percent = Math.round(((index + 1) / submissions.length) * 100);
@@ -319,17 +377,8 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
         }
 
         // Determine company upper folder name
-        let companyCode = 'nmsa';
-        if (sub.kode) {
-          const rawMatch = sub.kode.split('-');
-          if (rawMatch.length >= 2) {
-            companyCode = rawMatch[1].toLowerCase();
-          }
-        }
-        if (!companyCode || /^\d+$/.test(companyCode)) {
-          companyCode = 'nmsa';
-        }
-        const folderCompanyUpper = companyCode.toUpperCase();
+        const parsedComp = parseCompanyAndSequenceLocal(sub.kode);
+        const folderCompanyUpper = parsedComp.company.toUpperCase();
 
         // 1. Create/Retrieve company, year, month, day path
         const rootId = 'root';
@@ -392,6 +441,7 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
         );
 
         for (let docIdx = 0; docIdx < existingDocs.length; docIdx++) {
+          if (stopRequestedRef.current) break; // allow breaking inside files loop
           const doc = existingDocs[docIdx];
           addLog(`Mencadangkan berkas lampiran (${docIdx + 1}/${existingDocs.length}): ${doc.name}...`);
           const fileBytes = await downloadGoogleDriveFile(doc.url, token);
@@ -409,45 +459,46 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
             });
             addLog(`Grup lampiran dicadangkan: ${doc.name}`);
           } else {
-            // Keep existing entry as fallback if it couldn't be downloaded
             addLog(`[Peringatan] Berkas lampiran asli tidak bisa diunduh, menyertakan link lama: ${doc.name}`);
             freshFinalFiles.push(doc);
           }
         }
 
         // 5. Download and Re-Upload Bukti Pembayaran if any
-        const existingPaymentDoc = sub.buktiPembayaran || (sub.googleDriveFiles || []).find(f => f.isBuktiPembayaran);
-        if (existingPaymentDoc) {
-          addLog(`Mengunduh & Memulihkan Berkas Bukti Pembayaran...`);
-          const fileBytes = await downloadGoogleDriveFile(existingPaymentDoc.url, token);
-          if (fileBytes) {
-            const folderBuktiBayarId = await getOrCreateFolder(token, 'Bukti Pembayaran', targetFolderId);
-            let mimeType = 'application/octet-stream';
-            if (existingPaymentDoc.name.toLowerCase().endsWith('.pdf')) mimeType = 'application/pdf';
-            else if (existingPaymentDoc.name.toLowerCase().endsWith('.png')) mimeType = 'image/png';
-            else if (existingPaymentDoc.name.toLowerCase().endsWith('.jpg') || existingPaymentDoc.name.toLowerCase().endsWith('.jpeg')) mimeType = 'image/jpeg';
+        if (!stopRequestedRef.current) {
+          const existingPaymentDoc = sub.buktiPembayaran || (sub.googleDriveFiles || []).find(f => f.isBuktiPembayaran);
+          if (existingPaymentDoc) {
+            addLog(`Mengunduh & Memulihkan Berkas Bukti Pembayaran...`);
+            const fileBytes = await downloadGoogleDriveFile(existingPaymentDoc.url, token);
+            if (fileBytes) {
+              const folderBuktiBayarId = await getOrCreateFolder(token, 'Bukti Pembayaran', targetFolderId);
+              let mimeType = 'application/octet-stream';
+              if (existingPaymentDoc.name.toLowerCase().endsWith('.pdf')) mimeType = 'application/pdf';
+              else if (existingPaymentDoc.name.toLowerCase().endsWith('.png')) mimeType = 'image/png';
+              else if (existingPaymentDoc.name.toLowerCase().endsWith('.jpg') || existingPaymentDoc.name.toLowerCase().endsWith('.jpeg')) mimeType = 'image/jpeg';
 
-            const resData = await uploadFileToFolder(token, existingPaymentDoc.name, mimeType, fileBytes, folderBuktiBayarId);
-            freshBuktiPembayaran = resData;
-            freshFinalFiles.push({
-              url: resData.url,
-              name: resData.name,
-              isBuktiPembayaran: true
-            });
-            addLog(`Bukti Pembayaran berhasil dipulihkan & disimpan.`);
-          } else {
-            addLog(`[Peringatan] Gagal memindahkan Bukti Pembayaran asli, menyalin link lama.`);
-            freshBuktiPembayaran = existingPaymentDoc;
-            freshFinalFiles.push({
-              url: existingPaymentDoc.url,
-              name: existingPaymentDoc.name,
-              isBuktiPembayaran: true
-            });
+              const resData = await uploadFileToFolder(token, existingPaymentDoc.name, mimeType, fileBytes, folderBuktiBayarId);
+              freshBuktiPembayaran = resData;
+              freshFinalFiles.push({
+                url: resData.url,
+                name: resData.name,
+                isBuktiPembayaran: true
+              });
+              addLog(`Bukti Pembayaran berhasil dipulihkan & disimpan.`);
+            } else {
+              addLog(`[Peringatan] Gagal memindahkan Bukti Pembayaran asli, menyalin link lama.`);
+              freshBuktiPembayaran = existingPaymentDoc;
+              freshFinalFiles.push({
+                url: existingPaymentDoc.url,
+                name: existingPaymentDoc.name,
+                isBuktiPembayaran: true
+              });
+            }
           }
         }
 
         // 6. Upload Petty Cash LPJ file if applicable
-        if (sub.isPettyCash && sub.pettyCashFile) {
+        if (!stopRequestedRef.current && sub.isPettyCash && sub.pettyCashFile) {
           addLog(`Mengunduh & Menyusun LPJ Petty Cash...`);
           const fileBytes = await downloadGoogleDriveFile(sub.pettyCashFile.url, token);
           if (fileBytes) {
@@ -481,10 +532,12 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
         
         // Find index in parent array and replace
         updatedSubmissions[index] = updatedSub;
-        setSuccessCount(prev => prev + 1);
+        actualSuccesses++;
+        setSuccessCount(actualSuccesses);
         addLog(`[SUKSES] Transaksi ${kodeStr} berhasil disinkronkan sepenuhnya!`);
       } catch (subErr: any) {
-        setFailedCount(prev => prev + 1);
+        actualFailures++;
+        setFailedCount(actualFailures);
         addLog(`[EROR] Gagal mengunggah transaksi ${kodeStr}: ${subErr.message || subErr}`);
         console.error(subErr);
       }
@@ -493,8 +546,11 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
     // Persist finalized array
     onUpdateSubmissions(updatedSubmissions);
     setIsSyncing(false);
-    setCurrentStepText('Sinkronisasi Massal Selesai!');
-    addLog(`== SELESAI == Berhasil memperbarui ${successCount + failedCount} dokumen. Sukses: ${successCount}, Eror: ${failedCount}.`);
+    setIsStopRequested(false);
+    const wasStopped = stopRequestedRef.current;
+    stopRequestedRef.current = false;
+    setCurrentStepText(wasStopped ? 'Sinkronisasi dihentikan.' : 'Sinkronisasi Massal Selesai!');
+    addLog(`== SELESAI == Berhasil memperbarui dokumen yang diproses. Sukses: ${actualSuccesses}, Eror: ${actualFailures}.`);
   };
 
   return (
@@ -563,24 +619,44 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
                   </p>
                 </div>
                 
-                <button
-                  type="button"
-                  disabled={isSyncing}
-                  onClick={handleStartSync}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs font-black uppercase tracking-wider text-white bg-amber-600 hover:bg-amber-700 disabled:bg-stone-300 rounded-xl shadow-md transition disabled:cursor-not-allowed shrink-0 cursor-pointer"
-                >
-                  {isSyncing ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      <span>Mensinkronkan...</span>
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw size={14} />
-                      <span>Sinkronkan Ke Google Drive (1-Klik)</span>
-                    </>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    disabled={isSyncing}
+                    onClick={handleStartSync}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs font-black uppercase tracking-wider text-white bg-amber-600 hover:bg-amber-700 disabled:bg-stone-350 rounded-xl shadow-sm transition disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {isSyncing ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Mensinkronkan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={14} />
+                        <span>Sinkronkan Ke Google Drive (1-Klik)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {isSyncing && (
+                    <button
+                      type="button"
+                      disabled={isStopRequested}
+                      onClick={handleStopSync}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs font-black uppercase tracking-wider text-white bg-rose-650 hover:bg-rose-700 disabled:bg-stone-300 rounded-xl shadow-sm transition cursor-pointer"
+                    >
+                      {isStopRequested ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>Menghentikan...</span>
+                        </>
+                      ) : (
+                        <span>Hentikan</span>
+                      )}
+                    </button>
                   )}
-                </button>
+                </div>
               </div>
 
               {/* Progress Panel */}

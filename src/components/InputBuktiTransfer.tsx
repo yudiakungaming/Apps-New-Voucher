@@ -196,38 +196,63 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
 
   const parseCompanyAndSequence = (kodeStr: string): { company: string; customFolderKode: string } => {
     const clean = (kodeStr || '').trim();
-    const parts = clean.split(/[\s/\\_-]+/);
+    const upperClean = clean.toUpperCase();
     
     let company = 'nmsa'; // Default company
-    let prefix = 'BKK';
-    let seq = '';
     
-    if (parts.length > 0) {
-      const firstPartUpper = parts[0].toUpperCase();
-      if (firstPartUpper === 'BKK' && parts.length >= 2) {
-        prefix = 'BKK';
-        company = parts[1].toLowerCase();
-        seq = parts[parts.length - 1];
-      } else {
-        if (parts.length >= 2) {
-          prefix = parts[0].toUpperCase();
-          company = parts[1].toLowerCase();
-          seq = parts[parts.length - 1];
-        } else {
-          prefix = 'BKK';
-          company = 'nmsa';
-          seq = parts[0];
+    // 1. If it explicitly contains "NMSA" anywhere, company is "nmsa"
+    if (upperClean.includes('NMSA')) {
+      company = 'nmsa';
+    } else {
+      const parts = clean.split(/[\s/\\_-]+/);
+      if (parts.length > 0) {
+        const p0 = parts[0].toUpperCase();
+        const isPrefix = ['BKK', 'BKM', 'INV', 'T', 'VOUCHER', 'LPJ'].includes(p0);
+        if (isPrefix && parts.length >= 2) {
+          const potentialComp = parts[1].toLowerCase();
+          const isNumeric = /^\d+$/.test(potentialComp);
+          const isMonthNumeral = ['i','ii','iii','iv','v','vi','vii','viii','ix','x','xi','xii'].includes(potentialComp);
+          const isTooShortOrLong = potentialComp.length < 2 || potentialComp.length > 15;
+          if (!isNumeric && !isMonthNumeral && !isTooShortOrLong) {
+            company = potentialComp;
+          } else {
+            company = 'nmsa';
+          }
+        } else if (!isPrefix) {
+          const p0Lower = parts[0].toLowerCase();
+          const isNumeric = /^\d+$/.test(p0Lower);
+          const isTooShortOrLong = p0Lower.length < 2 || p0Lower.length > 15;
+          if (!isNumeric && !isTooShortOrLong) {
+            company = p0Lower;
+          } else {
+            company = 'nmsa';
+          }
         }
       }
     }
-    
+
     company = company.replace(/[^a-z0-9]/gi, '').toLowerCase();
-    if (!company) company = 'nmsa';
-    
-    const compUpper = company.toUpperCase();
+    if (!company || /^\d+$/.test(company)) {
+      company = 'nmsa';
+    }
+
+    // To build customFolderKode:
+    const partsForFolder = clean.split(/[\s/\\_-]+/);
+    let prefix = 'BKK';
+    let seq = '';
+    if (partsForFolder.length > 0) {
+      const p0 = partsForFolder[0].toUpperCase();
+      if (['BKK', 'BKM', 'INV', 'T', 'VOUCHER', 'LPJ'].includes(p0)) {
+        prefix = p0;
+        seq = partsForFolder[partsForFolder.length - 1] || '';
+      } else {
+        prefix = 'BKK';
+        seq = partsForFolder[partsForFolder.length - 1] || '';
+      }
+    }
     const cleanSeq = (seq || '').toUpperCase();
-    const customFolderKode = `${prefix}-${compUpper}-${cleanSeq}`;
-    
+    const customFolderKode = `${prefix}-${company.toUpperCase()}-${cleanSeq}`;
+
     return {
       company,
       customFolderKode
