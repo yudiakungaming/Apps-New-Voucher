@@ -377,8 +377,7 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
         }
 
         // Determine company upper folder name
-        const parsedComp = parseCompanyAndSequenceLocal(sub.kode);
-        const folderCompanyUpper = parsedComp.company.toUpperCase();
+        const folderCompanyUpper = 'NMSA';
 
         // 1. Create/Retrieve company, year, month, day path
         const rootId = 'root';

@@ -527,8 +527,7 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
           dayStr = String(dateObj.getDate());
         }
 
-        const { company } = parseCompanyAndSequence(selectedSubmission.kode);
-        const folderCompanyUpper = company.toUpperCase();
+        const folderCompanyUpper = 'NMSA';
 
         try {
           // 1. Get or create 'Voucher-APP' under 'root'
