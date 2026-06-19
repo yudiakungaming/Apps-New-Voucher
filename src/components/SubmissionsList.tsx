@@ -183,6 +183,12 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   // Invoice calculations and groupings
   const invoiceSubmissions = useMemo(() => {
     return submissions.filter(sub => {
+      // If the user explicitly set isInvoice (either true or false), we must respect it.
+      if (typeof sub.isInvoice === 'boolean') {
+        return sub.isInvoice;
+      }
+
+      // Heuristic fallback for older documents that don't have isInvoice field
       const hasInvoiceTag = !!sub.isInvoice;
       const hasInvoiceFile = !!sub.googleDriveFiles?.some(
         f => f.docType === 'invoice_vendor' || 
@@ -197,7 +203,27 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
         (i.keterangan || '').toLowerCase().includes('invoice')
       );
       
-      return hasInvoiceTag || hasInvoiceFile || isInvoiceNote || isInvoiceItem;
+      const heuristicMatch = hasInvoiceTag || hasInvoiceFile || isInvoiceNote || isInvoiceItem;
+
+      // Exclude tax-related (pajak / djp / direktorat) from heuristic auto-detect unless they are explicitly tagged
+      if (heuristicMatch) {
+        const isTaxRelated = 
+          (sub.jenisPengajuan || '').toLowerCase().includes('pajak') ||
+          (sub.dibayarkanKepada || '').toLowerCase().includes('pajak') ||
+          (sub.dibayarkanKepada || '').toLowerCase().includes('djp') ||
+          (sub.notes || '').toLowerCase().includes('pajak') ||
+          (sub.notes || '').toLowerCase().includes('djp') ||
+          (sub.items || []).some(i => 
+            (i.item || '').toLowerCase().includes('pajak') || 
+            (i.keterangan || '').toLowerCase().includes('pajak')
+          );
+
+        if (isTaxRelated) {
+          return false;
+        }
+      }
+
+      return heuristicMatch;
     });
   }, [submissions]);
 
