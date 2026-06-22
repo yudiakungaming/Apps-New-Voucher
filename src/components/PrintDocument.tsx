@@ -957,7 +957,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
                   <tr className="bg-[#D9D9D9]/30 border-b-[1.5px] border-black text-black font-bold uppercase text-xs">
                     <th className="border-r border-black py-2.5 px-1 text-center w-[5%]">NO</th>
                     <th className="border-r border-black py-2.5 px-3 text-left w-[41%]">ITEM DETIL (INVOICE / DESKRIPSI)</th>
-                    <th className="border-r border-black py-2.5 px-2 text-center w-[8%]">VOLUME</th>
+                    <th className="border-r border-black py-2.5 px-2 text-center w-[8%]">VOL</th>
                     <th className="border-r border-black py-2.5 px-3 text-center w-[24%]">TOTAL (RP)</th>
                     <th className="py-2.5 px-3 text-left w-[22%]">KETERANGAN</th>
                   </tr>
