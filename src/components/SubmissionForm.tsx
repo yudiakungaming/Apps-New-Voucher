@@ -285,7 +285,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   const [kode, setKode] = useState('HO');
   const [dibayarkanKepada, setDibayarkanKepada] = useState('');
   const [dibayarkanDengan, setDibayarkanDengan] = useState<PaymentMethod>('Cek/Transfer');
-  const [status, setStatus] = useState<'Lunas' | 'Belum Lunas'>('Lunas');
+  const [status, setStatus] = useState<'Lunas' | 'Belum Lunas'>('Belum Lunas');
   const [notes, setNotes] = useState('');
 
   // Invoice fields
@@ -344,6 +344,11 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
   } | null>(null);
   const [fileToDeleteStatus, setFileToDeleteStatus] = useState<'idle' | 'deleting'>('idle');
   const [fileToDeleteError, setFileToDeleteError] = useState<string | null>(null);
+
+  // Sync payment status state with payment proof file presence
+  useEffect(() => {
+    setStatus((buktiPembayaranFile || buktiPembayaranDrive) ? 'Lunas' : 'Belum Lunas');
+  }, [buktiPembayaranFile, buktiPembayaranDrive]);
 
   // Check Drive connection status
   useEffect(() => {
@@ -604,7 +609,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setIsManualKode(true);
       setDibayarkanKepada(initialSubmission.dibayarkanKepada);
       setDibayarkanDengan(initialSubmission.dibayarkanDengan);
-      setStatus(initialSubmission.status || (initialSubmission.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas'));
+      setStatus(initialSubmission.status || 'Belum Lunas');
       setNotes(initialSubmission.notes);
       setIsInvoice(initialSubmission.isInvoice || false);
       setInvoiceNumber(initialSubmission.invoiceNumber || '');
@@ -619,7 +624,17 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setBuktiPembayaranDrive(initialSubmission.buktiPembayaran || null);
       if (initialSubmission.googleDriveFiles && initialSubmission.googleDriveFiles.length > 0) {
         setGoogleDriveFiles(initialSubmission.googleDriveFiles);
-        setFileItems(initialSubmission.googleDriveFiles.map((f, i) => ({
+        // Exclude system files (F1, F2, petty cash report, and payment proof) from the editable attachments list
+        const filteredAttachmentFiles = initialSubmission.googleDriveFiles.filter(f => 
+          !f.isF1 && 
+          !f.isF2 && 
+          !f.isBuktiPembayaran &&
+          f.docType !== 'petty_cash_report' &&
+          !(f.name || '').startsWith('F1 -') &&
+          !(f.name || '').startsWith('F2 -') &&
+          !(f.name || '').startsWith('Laporan Petty Cash -')
+        );
+        setFileItems(filteredAttachmentFiles.map((f, i) => ({
           id: `drive-${i}`,
           name: f.name,
           url: f.url,
@@ -676,7 +691,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
       setIsManualKode(false);
       setDibayarkanKepada('');
       setDibayarkanDengan('Cek/Transfer');
-      setStatus('Lunas');
+      setStatus('Belum Lunas');
       setNotes('');
       setGoogleDriveFileUrl('');
       setGoogleDriveFileName('');
@@ -1075,7 +1090,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
               if (foundDoc) {
                 baseName = `${foundDoc.label} - (${cleanJenis} - ${cleanPenerima})`;
               } else {
-                baseName = `Bukti Transaksi - (${cleanJenis} - ${cleanPenerima})`;
+                baseName = `File Pendukung Transaksi - (${cleanJenis} - ${cleanPenerima})`;
               }
             }
           } else {
@@ -1202,16 +1217,12 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
         total: Number(item.total) || 0
       }));
 
-      // Ensure we preserve the Lunas status if there was a payment proof uploaded (previously or now),
-      // if it was marked as Lunas, if the form state is Lunas, or if Cek/Transfer method is used.
+      // Ensure the Lunas status is determined strictly by the presence of a payment proof document
+      // uploaded on the dedicated "bukti pembayaran" uploader menu.
       const isLunas = !!(
         finalBuktiPembayaran ||
         buktiPembayaranFile ||
-        buktiPembayaranDrive ||
-        initialSubmission?.buktiPembayaran ||
-        status === 'Lunas' ||
-        initialSubmission?.status === 'Lunas' ||
-        dibayarkanDengan === 'Cek/Transfer'
+        buktiPembayaranDrive
       );
 
       const payload: Submission = {
@@ -1421,7 +1432,6 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
               onChange={(e) => {
                 const method = e.target.value as PaymentMethod;
                 setDibayarkanDengan(method);
-                setStatus(method === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas');
               }}
             >
               <option value="Cek/Transfer">Cek / Transfer</option>
@@ -1757,9 +1767,9 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
             <div className="space-y-0.5">
               <h3 className="text-xs font-semibold uppercase font-mono tracking-wider text-stone-500 flex items-center gap-1.5">
                 <Cloud size={14} className="text-[#D4AF37]" />
-                Bukti Transaksi (Google Drive)
+                File Pendukung Transaksi (Google Drive)
               </h3>
-              <p className="text-xs text-stone-400">Unggah bukti file nota pendukung transaksi langsung ke cloud Google Drive Anda.</p>
+              <p className="text-xs text-stone-400">Unggah file/berkas pendukung atau nota pendukung transaksi langsung ke cloud Google Drive Anda.</p>
             </div>
             
             {isDriveConnected && (
@@ -1920,7 +1930,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                     /* Grid 9 required documents for coal transactions */
                     <div className="space-y-3">
                       <span className="block text-[11px] font-mono font-bold text-stone-500 uppercase tracking-wider">
-                        {isInvoice ? 'Berkas Dokumen Pendukung Tambahan (Batubara)' : '9 Dokumen Bukti Transaksi Wajib / Utama (Batubara)'}
+                        {isInvoice ? 'Berkas Dokumen Pendukung Tambahan (Batubara)' : '9 Dokumen Pendukung Transaksi Wajib / Utama (Batubara)'}
                       </span>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {REQUIRED_TRANSACTION_DOCS.filter(doc => isInvoice ? doc.key !== 'invoice_vendor' : true).map((doc) => {
