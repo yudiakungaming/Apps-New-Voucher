@@ -670,6 +670,7 @@ export default function App() {
             {/* Main Listing components */}
             <SubmissionsList
               submissions={submissions}
+              userProfile={userProfile}
               onSelect={(sub, initialTab) => {
                 setActiveSubmission(sub);
                 setPrintInitialTab(initialTab || 'both');
