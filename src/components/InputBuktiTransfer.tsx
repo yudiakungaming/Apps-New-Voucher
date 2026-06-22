@@ -1069,7 +1069,7 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
                     onClick={() => setIsSuccess(false)}
                     className="w-full py-2 bg-stone-900 hover:bg-stone-850 text-white font-mono text-[10px] font-bold uppercase tracking-wider rounded-lg transition"
                   >
-                    Unggah Bukti Transaksi Lain
+                    Unggah Bukti Pembayaran Lain
                   </button>
                 </div>
               )}
