@@ -1202,7 +1202,7 @@ export const InputBuktiTransfer: React.FC<InputBuktiTransferProps> = ({
                         <input
                           id="bukti_transfer_upload_file"
                           type="file"
-                          accept="image/*,application/pdf"
+                          accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,.xlsx,.xls,.doc,.docx,.csv,.txt"
                           className="hidden"
                           onChange={handleFileChange}
                         />
