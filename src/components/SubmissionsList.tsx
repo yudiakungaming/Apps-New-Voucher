@@ -138,7 +138,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
 
   // Filter logic
   const filteredSubmissions = useMemo(() => {
-    return submissions.filter((sub) => {
+    const list = submissions.filter((sub) => {
       const matchSearch =
         sub.dibayarkanKepada.toLowerCase().includes(searchTerm.toLowerCase()) ||
         sub.jenisPengajuan.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -167,6 +167,33 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       }
 
       return matchSearch && matchMethod && matchStatus && matchJenis && matchDate;
+    });
+
+    // Sort descending by tanggal (latest date first), with logical tie-breakers
+    return list.sort((a, b) => {
+      // 1. Compare Date (tanggal)
+      const dateA = a.tanggal || '';
+      const dateB = b.tanggal || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+
+      // 2. Compare BKK serial number suffix if matching pattern e.g. "BKK-NMSA/VI/26/1020"
+      const suffixA = a.kode ? parseInt(a.kode.split('/').pop() || '0', 10) : 0;
+      const suffixB = b.kode ? parseInt(b.kode.split('/').pop() || '0', 10) : 0;
+      if (!isNaN(suffixA) && !isNaN(suffixB) && suffixA !== suffixB) {
+        return suffixB - suffixA; // Higher serial number first
+      }
+
+      // 3. Fallback to createdAt
+      const timeC = a.createdAt || '';
+      const timeD = b.createdAt || '';
+      if (timeC !== timeD) {
+        return timeD.localeCompare(timeC);
+      }
+
+      // 4. Fallback to ID
+      return b.id.localeCompare(a.id);
     });
   }, [submissions, searchTerm, methodFilter, statusFilter, jenisFilter, yearFilter, monthFilter, dateFilter]);
 
