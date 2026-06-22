@@ -256,7 +256,12 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
       setReloadTrigger(prev => prev + 1);
     } catch (err: any) {
       console.error("Failed to copy file:", err);
-      alert("Gagal menyalin berkas ke Google Drive Anda: " + (err.message || err));
+      const errMsg = err.message || String(err);
+      if (errMsg.includes("404") || errMsg.toLowerCase().includes("not found")) {
+        alert(`Dokumen asli "${fileName}" tidak ditemukan di Google Drive.\n\nKemungkinan:\n1. Berkas telah dihapus atau dipindahkan ke Sampah oleh pemiliknya.\n2. Berkas diunggah menggunakan akun Google Apps yang berbeda, sehingga akun Anda saat ini tidak memiliki hak akses.\n\nSaran: Silakan periksa atau unggah ulang berkas dokumen pendukung Anda melalui tombol "Edit Transaksi".`);
+      } else {
+        alert("Gagal menyalin berkas ke Google Drive Anda: " + errMsg);
+      }
     } finally {
       setIsCopying(prev => ({ ...prev, [fileId]: false }));
     }
@@ -1217,19 +1222,31 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
             size: A4 landscape;
             margin: 12mm 15mm 12mm 15mm;
           }
-          body {
+          html, body, #app-root, main, #app-root > main {
             background-color: white !important;
+            background: white !important;
             color: black !important;
             margin: 0 !important;
             padding: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            display: block !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+          /* Ensure wrapper elements do not carry external paddings/spacings in print content */
+          .space-y-6, .space-y-8 {
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
           }
           .print\:hidden {
             display: none !important;
           }
           /* Ensure each form fits exactly on a single A4 page */
           .page-break {
-            page-break-after: always !important;
-            break-after: page !important;
             border: none !important;
             padding: 0 !important;
             margin: 0 !important;
