@@ -387,6 +387,22 @@ export const getCompanyProfileFromFirestore = async (companyId: string): Promise
   return null;
 };
 
+export const loadAllCompaniesFromFirestore = async (): Promise<any[]> => {
+  if (!isFirebaseConfigured() || !firestoreDb) return [];
+  try {
+    const colRef = collection(firestoreDb, 'companies');
+    const snap = await getDocs(colRef);
+    const result: any[] = [];
+    snap.forEach((doc) => {
+      result.push(doc.data());
+    });
+    return result;
+  } catch (err) {
+    console.warn('Silent read rejection - failed to fetch companies:', err);
+  }
+  return [];
+};
+
 export const registerUserToFirebase = async (
   email: string, 
   password: string, 
