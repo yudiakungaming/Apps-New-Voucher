@@ -1023,7 +1023,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ submission, onBack
         {isLoadingPages && (
           <div className="w-[210mm] min-h-[140mm] bg-white border border-stone-250 shadow-md rounded-xl p-8 flex flex-col items-center justify-center gap-3 print:hidden">
             <Loader2 size={36} className="animate-spin text-amber-500" />
-            <span className="text-sm font-semibold text-stone-700">Mempersiapkan Lembar Lampiran Bukti Transaksi...</span>
+            <span className="text-sm font-semibold text-stone-700">Mempersiapkan Lembar Lampiran Pendukung Transaksi...</span>
             <span className="text-xs text-stone-400 font-mono animate-pulse">{loadingProgress}</span>
           </div>
         )}
