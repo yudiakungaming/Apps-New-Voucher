@@ -324,7 +324,7 @@ export async function generateF2PdfBytes(submission: any, grandTotal: number): P
   
   page.drawText('NO', { x: 45, y: 583, size: 8, font: fontBold });
   page.drawText('ITEM DETIL (INVOICE / DESKRIPSI)', { x: 75, y: 583, size: 8, font: fontBold });
-  page.drawText('VOLUME', { x: 325, y: 583, size: 8, font: fontBold });
+  page.drawText('VOL', { x: 325, y: 583, size: 8, font: fontBold });
   page.drawText('TOTAL (RP)', { x: 400, y: 583, size: 8, font: fontBold });
   page.drawText('KETERANGAN', { x: 475, y: 583, size: 8, font: fontBold });
 
