@@ -1044,6 +1044,13 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
 
           if (!fileBytes) {
             console.warn('Skipping file as bytes are empty:', originalName);
+            if (item.isDrive && item.url) {
+              finalFiles.push({
+                url: item.url,
+                name: item.name,
+                docType: item.docType
+              });
+            }
             continue;
           }
 
@@ -1059,7 +1066,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
 
           const ext = mimeType === 'application/pdf' ? '.pdf' : (getFileExtensionForSave(originalName) || '.bin');
           
-          let baseName = `Bukti Transaksi - (${cleanJenis} - ${cleanPenerima})`;
+          let baseName = '';
           if (item.docType) {
             if (item.docType === 'merged_all') {
               baseName = `Lengkap - Gabungan 9 Dokumen Utama - (${cleanJenis} - ${cleanPenerima})`;
@@ -1067,8 +1074,15 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
               const foundDoc = REQUIRED_TRANSACTION_DOCS.find(d => d.key === item.docType);
               if (foundDoc) {
                 baseName = `${foundDoc.label} - (${cleanJenis} - ${cleanPenerima})`;
+              } else {
+                baseName = `Bukti Transaksi - (${cleanJenis} - ${cleanPenerima})`;
               }
             }
+          } else {
+            // General attachment: PRESERVE original filename without extension (ext is appended below)
+            const lastDot = originalName.lastIndexOf('.');
+            const nameNoExt = lastDot !== -1 ? originalName.substring(0, lastDot) : originalName;
+            baseName = nameNoExt.trim();
           }
           
           const finalFileName = i === 0 ? `${baseName}${ext}` : `${baseName} (${i + 1})${ext}`;
@@ -1614,7 +1628,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                             <input
                               type="file"
                               className="hidden"
-                              accept="image/*,application/pdf"
+                              accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,.xlsx,.xls,.doc,.docx,.csv,.txt"
                               onChange={(e) => handleSpecificFileUpload(e, 'invoice_vendor')}
                             />
                           </label>
@@ -1715,7 +1729,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                       <input
                         type="file"
                         className="hidden"
-                        accept="image/*,application/pdf"
+                        accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,.xlsx,.xls,.doc,.docx,.csv,.txt"
                         onChange={(e) => {
                           if (e.target.files && e.target.files.length > 0) {
                             setPettyCashLocalFile(e.target.files[0]);
@@ -1888,11 +1902,11 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                                 </div>
                               ) : (
                                 <label className="cursor-pointer text-[10px] text-[#917118] hover:text-stone-850 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/35 py-1.5 px-3 rounded-lg transition font-semibold block text-center w-full">
-                                  Pilih Berkas Gabungan (PDF)
+                                  Pilih Berkas Gabungan
                                   <input
                                     type="file"
                                     className="hidden"
-                                    accept="application/pdf"
+                                    accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,.xlsx,.xls,.doc,.docx,.csv,.txt"
                                     onChange={(e) => handleSpecificFileUpload(e, 'merged_all')}
                                   />
                                 </label>
@@ -1980,7 +1994,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                                     <input
                                       type="file"
                                       className="hidden"
-                                      accept="image/*,application/pdf"
+                                      accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,.xlsx,.xls,.doc,.docx,.csv,.txt"
                                       onChange={(e) => handleSpecificFileUpload(e, doc.key)}
                                     />
                                   </label>
@@ -2006,11 +2020,11 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                     <label className="cursor-pointer w-full h-full flex flex-col items-center justify-center py-2 space-y-1 hover:bg-stone-50/50 rounded-lg transition duration-250">
                       <Cloud size={20} className="text-stone-400" />
                       <span className="text-xs font-bold text-stone-700">Pilih Berkas Lampiran Lain</span>
-                      <span className="text-[9px] text-stone-400">PDF, JPG, PNG dll.</span>
+                      <span className="text-[9px] text-stone-400">PDF, Excel, Word, Image, dll.</span>
                       <input
                         type="file"
                         className="hidden"
-                        accept="image/*,application/pdf"
+                        accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,.xlsx,.xls,.doc,.docx,.csv,.txt"
                         multiple
                         onChange={handleFileUpload}
                       />
@@ -2093,7 +2107,7 @@ export const SubmissionForm: React.FC<SubmissionFormProps> = ({
                     <input
                       type="file"
                       className="hidden"
-                      accept="image/*,application/pdf"
+                      accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,.xlsx,.xls,.doc,.docx,.csv,.txt"
                       onChange={(e) => {
                         if (e.target.files && e.target.files.length > 0) {
                           setBuktiPembayaranFile(e.target.files[0]);
