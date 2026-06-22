@@ -12,6 +12,7 @@ interface SubmissionsListProps {
   onDuplicate: (submission: Submission) => void;
   onAddNew: () => void;
   onOpenBuktiTransfer?: () => void;
+  userProfile?: any;
 }
 
 export const SubmissionsList: React.FC<SubmissionsListProps> = ({
@@ -22,11 +23,32 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
   onDuplicate,
   onAddNew,
   onOpenBuktiTransfer,
+  userProfile,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [jenisFilter, setJenisFilter] = useState<string>('');
+  
+  const [yearFilter, setYearFilter] = useState<string>('All');
+  const [monthFilter, setMonthFilter] = useState<string>('All');
+  const [dateFilter, setDateFilter] = useState<string>('');
+
+  const MONTHS_LIST = [
+    { value: 'All', label: 'Semua Bulan' },
+    { value: '01', label: 'Januari' },
+    { value: '02', label: 'Februari' },
+    { value: '03', label: 'Maret' },
+    { value: '04', label: 'April' },
+    { value: '05', label: 'Mei' },
+    { value: '06', label: 'Juni' },
+    { value: '07', label: 'Juli' },
+    { value: '08', label: 'Agustus' },
+    { value: '09', label: 'September' },
+    { value: '10', label: 'Oktober' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'Desember' }
+  ];
   
   const [layoutMode, setLayoutMode] = useState<'standard' | 'spreadsheet' | 'audit_logs' | 'invoice_recap' | 'unpaid_outstanding' | 'petty_cash_recap'>('standard');
   const [activeSheetTab, setActiveSheetTab] = useState<string>('Data Sinkron');
@@ -100,6 +122,20 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
     return sheets;
   }, [submissions]);
 
+  // Dynamic list of years from submissions
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    submissions.forEach(sub => {
+      if (sub.tanggal) {
+        const parts = sub.tanggal.split('-');
+        if (parts.length >= 1 && parts[0]) {
+          years.add(parts[0]);
+        }
+      }
+    });
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [submissions]);
+
   // Filter logic
   const filteredSubmissions = useMemo(() => {
     return submissions.filter((sub) => {
@@ -116,9 +152,23 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       const matchJenis = !jenisFilter.trim() || 
         sub.jenisPengajuan.toLowerCase().includes(jenisFilter.trim().toLowerCase());
 
-      return matchSearch && matchMethod && matchStatus && matchJenis;
+      // Filter by Date, Month, Year
+      let matchDate = true;
+      if (sub.tanggal) {
+        const [y, m] = sub.tanggal.split('-'); // Format "YYYY-MM-DD"
+        
+        const matchYear = yearFilter === 'All' || y === yearFilter;
+        const matchMonth = monthFilter === 'All' || m === monthFilter;
+        const matchDay = !dateFilter || sub.tanggal === dateFilter;
+        
+        matchDate = matchYear && matchMonth && matchDay;
+      } else {
+        matchDate = yearFilter === 'All' && monthFilter === 'All' && !dateFilter;
+      }
+
+      return matchSearch && matchMethod && matchStatus && matchJenis && matchDate;
     });
-  }, [submissions, searchTerm, methodFilter, statusFilter, jenisFilter]);
+  }, [submissions, searchTerm, methodFilter, statusFilter, jenisFilter, yearFilter, monthFilter, dateFilter]);
 
   const spreadsheetFilteredSubmissions = useMemo(() => {
     if (activeSheetTab === 'Data Sinkron') {
@@ -449,6 +499,67 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
     return Array.from(locSet);
   }, [allUnpaidSubmissionsAllTime]);
 
+  const handleDownloadCSV = () => {
+    if (filteredSubmissions.length === 0) {
+      alert("Tidak ada data untuk diunduh!");
+      return;
+    }
+
+    // Headers matching professional ledger style
+    const headers = [
+      "No",
+      "Tanggal",
+      "No Voucher / Kode",
+      "Lokasi",
+      "Jenis Pengajuan",
+      "Penerima",
+      "Metode Pembayaran",
+      "Status",
+      "Items Pengeluaran",
+      "Keterangan Items",
+      "Nominal (IDR)"
+    ];
+
+    const rows: string[][] = [];
+
+    filteredSubmissions.forEach((sub, idx) => {
+      const subTotal = sub.items.reduce((sum, item) => sum + item.total, 0);
+      const itemsStr = sub.items.map(item => item.item).join(" | ");
+      const specStr = sub.items.map(item => item.keterangan || "").filter(Boolean).join(" | ");
+      const statusStr = sub.status || (sub.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas');
+
+      rows.push([
+        String(idx + 1),
+        sub.tanggal || "",
+        sub.kode || "",
+        `"${(sub.lokasi || "").replace(/"/g, '""')}"`,
+        `"${(sub.jenisPengajuan || "").replace(/"/g, '""')}"`,
+        `"${(sub.dibayarkanKepada || "").replace(/"/g, '""')}"`,
+        sub.dibayarkanDengan || "",
+        statusStr,
+        `"${itemsStr.replace(/"/g, '""')}"`,
+        `"${specStr.replace(/"/g, '""')}"`,
+        String(subTotal)
+      ]);
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    let monthLabel = monthFilter === 'All' ? 'Semua-Bulan' : MONTHS_LIST.find(m => m.value === monthFilter)?.label || monthFilter;
+    let yearLabel = yearFilter === 'All' ? 'Semua-Tahun' : yearFilter;
+    let fileDateLabel = dateFilter ? `-${dateFilter}` : `-${monthLabel}-${yearLabel}`;
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Laporan_Transaksi_PT_NMSA${fileDateLabel}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       {/* Dynamic View Layout Switcher Bar */}
@@ -631,74 +742,170 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
 
       {/* Control Panel: Search & Filters */}
       {layoutMode === 'standard' && (
-        <div className="p-5 bg-white rounded-2xl border border-stone-200 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div className="flex-1 flex flex-col md:flex-row items-stretch gap-3">
-            {/* Text Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
-              <input
-                type="text"
-                placeholder="Cari penerima, items, lokasi, atau kode..."
-                className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+        <div className="bg-white rounded-2xl border border-stone-200 shadow-xs divide-y divide-stone-150 print:hidden animate-fade-in">
+          {/* Row 1: General search & core criteria */}
+          <div className="p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            <div className="flex-1 flex flex-col md:flex-row items-stretch gap-3">
+              {/* Text Search */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Cari penerima, items, lokasi, atau kode..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition text-stone-900"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+
+              {/* Jenis Filter Input */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Filter jenis pengajuan (e.g. Petty Cash, Gaji)..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition text-stone-900"
+                  value={jenisFilter}
+                  onChange={(e) => setJenisFilter(e.target.value)}
+                />
+              </div>
+
+              {/* Method Filter */}
+              <select
+                className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
+                value={methodFilter}
+                onChange={(e) => setMethodFilter(e.target.value)}
+              >
+                <option value="All">Semua Metode</option>
+                <option value="Tunai">Tunai</option>
+                <option value="Cek/Transfer">Cek/Transfer</option>
+              </select>
+
+              {/* Status Filter */}
+              <select
+                className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="All">Semua Status</option>
+                <option value="Lunas">Lunas</option>
+                <option value="Belum Lunas">Belum Lunas</option>
+              </select>
             </div>
 
-            {/* Jenis Filter Input */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-stone-400" size={18} />
-              <input
-                type="text"
-                placeholder="Filter jenis pengajuan (e.g. Petty Cash, Gaji)..."
-                className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-400 transition"
-                value={jenisFilter}
-                onChange={(e) => setJenisFilter(e.target.value)}
-              />
+            {/* Action Button Container */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <button
+                onClick={onOpenBuktiTransfer}
+                id="btn-upload-bukti-transfer"
+                className="flex items-center justify-center gap-1 px-4 py-2.5 border border-stone-250 bg-white hover:bg-stone-50 hover:border-stone-400 text-stone-700 font-bold rounded-xl transition shadow-3xs cursor-pointer text-xs"
+              >
+                <RefreshCw size={14} className="text-amber-500 mr-1" />
+                <span>Upload Bukti Bayar</span>
+              </button>
+
+              <button
+                onClick={onAddNew}
+                id="btn-add-new-submission"
+                className="flex items-center justify-center gap-2 bg-gold-dynamic hover:bg-gold-dynamic-hover text-stone-900 font-extrabold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300 cursor-pointer text-xs font-display tracking-wide"
+              >
+                <Plus size={16} />
+                <span>Input Pengajuan Baru</span>
+              </button>
             </div>
-
-            {/* Method Filter */}
-            <select
-              className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
-              value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value)}
-            >
-              <option value="All">Semua Metode</option>
-              <option value="Tunai">Tunai</option>
-              <option value="Cek/Transfer">Cek/Transfer</option>
-            </select>
-
-            {/* Status Filter */}
-            <select
-              className="px-4 py-2.5 bg-stone-50 border border-stone-250 rounded-xl text-sm focus:ring-2 focus:ring-stone-400 focus:outline-none md:w-48 text-stone-700"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="All">Semua Status</option>
-              <option value="Lunas">Lunas</option>
-              <option value="Belum Lunas">Belum Lunas</option>
-            </select>
           </div>
 
-          {/* Action Button Container */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-            <button
-              onClick={onOpenBuktiTransfer}
-              id="btn-upload-bukti-transfer"
-              className="flex items-center justify-center gap-1 px-4 py-2.5 border border-stone-250 bg-white hover:bg-stone-50 hover:border-stone-400 text-stone-700 font-bold rounded-xl transition shadow-3xs cursor-pointer text-xs"
-            >
-              <RefreshCw size={14} className="text-amber-500 mr-1" />
-              <span>Upload Bukti Bayar</span>
-            </button>
+          {/* Row 2: Monthly, Yearly, and Date Filters & Download reports */}
+          <div className="p-5 bg-stone-50/40 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex-1 flex flex-wrap items-center gap-4">
+              {/* Year Filter Option */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider font-mono">Tahun Transaksi</span>
+                <select
+                  className="px-3.5 py-2 bg-white border border-stone-250 rounded-xl text-xs focus:ring-2 focus:ring-stone-400 focus:outline-none text-stone-850 min-w-[130px] font-medium"
+                  value={yearFilter}
+                  onChange={(e) => setYearFilter(e.target.value)}
+                >
+                  <option value="All">Semua Tahun</option>
+                  {availableYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
 
-            <button
-              onClick={onAddNew}
-              id="btn-add-new-submission"
-              className="flex items-center justify-center gap-2 bg-gold-dynamic hover:bg-gold-dynamic-hover text-stone-900 font-extrabold px-5 py-2.5 rounded-xl transition shadow-xs focus:ring-2 focus:ring-amber-300 cursor-pointer text-xs font-display tracking-wide"
-            >
-              <Plus size={16} />
-              <span>Input Pengajuan Baru</span>
-            </button>
+              {/* Month Filter Option */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider font-mono">Bulan Transaksi</span>
+                <select
+                  className="px-3.5 py-2 bg-white border border-stone-250 rounded-xl text-xs focus:ring-2 focus:ring-stone-400 focus:outline-none text-stone-850 min-w-[150px] font-medium"
+                  value={monthFilter}
+                  onChange={(e) => setMonthFilter(e.target.value)}
+                >
+                  {MONTHS_LIST.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Specific Date Picker Input */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider font-mono">Tanggal Spesifik</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="px-3.5 py-2 bg-white border border-stone-250 rounded-xl text-xs focus:ring-2 focus:ring-stone-400 focus:outline-none text-stone-850 font-mono"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                  />
+                  {dateFilter && (
+                    <button
+                      onClick={() => setDateFilter('')}
+                      className="px-2.5 py-2 hover:bg-stone-200/60 text-stone-550 hover:text-stone-800 text-[11px] font-mono font-bold rounded-lg transition"
+                      title="Bersihkan Tanggal"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Active Filter Indicators */}
+              {(yearFilter !== 'All' || monthFilter !== 'All' || dateFilter) && (
+                <div className="self-end pb-1 pl-1">
+                  <button
+                    onClick={() => {
+                      setYearFilter('All');
+                      setMonthFilter('All');
+                      setDateFilter('');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-850 border border-amber-200 text-[10px] font-bold font-mono rounded-lg transition"
+                  >
+                    Reset Filter Periode ×
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Print and Export Buttons */}
+            <div className="flex items-center gap-2 self-stretch lg:self-end">
+              <button
+                onClick={handleDownloadCSV}
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4.5 py-2.5 bg-emerald-800 hover:bg-emerald-900 border border-emerald-950 text-white font-extrabold rounded-xl transition duration-150 text-xs shadow-3xs cursor-pointer select-none"
+                title="Download Laporan Format CSV/Excel"
+              >
+                <FileSpreadsheet size={13} className="text-white" />
+                <span>Unduh Laporan (CSV)</span>
+              </button>
+
+              <button
+                onClick={() => window.print()}
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4.5 py-2.5 bg-stone-900 hover:bg-stone-800 border border-stone-955 text-white font-extrabold rounded-xl transition duration-150 text-xs shadow-3xs cursor-pointer select-none"
+                title="Cetak Laporan Bulanan / Filter Terpilih"
+              >
+                <Printer size={13} className="text-amber-500 animate-pulse" />
+                <span>Cetak List (PDF)</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -706,7 +913,7 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
       {/* Main Content Layout Block: Standard List vs Google Sheets Simulator */}
       {layoutMode === 'standard' ? (
         /* Standard Table View */
-        <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden print:hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -2589,6 +2796,101 @@ export const SubmissionsList: React.FC<SubmissionsListProps> = ({
                 Belum terdaftar riwayat ataupun asersi kejadian dalam sistem log riwayat aktivitas.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 
+        FORMAL PRINT REPORT ACCENT: 
+        Only visible on physical print paper or PDF export (hidden on screen)
+      */}
+      {layoutMode === 'standard' && (
+        <div className="hidden print:block font-sans text-black p-4 space-y-6">
+          <div className="border-b-2 border-stone-900 pb-4 flex justify-between items-end">
+            <div>
+              <h1 className="text-xl font-bold font-display uppercase tracking-wider text-stone-900">PT NUSANTARA MINERAL SUKSES ABADI</h1>
+              <p className="text-[10px] text-stone-500 font-mono">DIVISI FINANCE & INTERNAL LEDGER DATABASE</p>
+              <h2 className="text-sm font-semibold text-stone-850 mt-1">Laporan List Transaksi Pengeluaran Kas / Bank</h2>
+            </div>
+            <div className="text-right font-mono text-[10px] text-stone-500">
+              <p>Dicetak pada: {new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+              <p>Filter: {monthFilter === 'All' ? 'Semua Bulan' : MONTHS_LIST.find(m => m.value === monthFilter)?.label} {yearFilter === 'All' ? 'Semua Tahun' : yearFilter}</p>
+            </div>
+          </div>
+
+          <table className="w-full text-left border-collapse text-[10px]">
+            <thead>
+              <tr className="bg-stone-100 border-y-2 border-stone-900 font-bold text-stone-850">
+                <th className="py-2 px-2 border border-stone-300 text-center w-10">No</th>
+                <th className="py-2 px-2 border border-stone-300 w-22">Tanggal</th>
+                <th className="py-2 px-2 border border-stone-300 w-28">No Voucher/Kode</th>
+                <th className="py-2 px-2 border border-stone-300 w-24">Lokasi</th>
+                <th className="py-2 px-2 border border-stone-300 w-32">Jenis Pengajuan</th>
+                <th className="py-2 px-2 border border-stone-300 w-40">Penerima Kas</th>
+                <th className="py-2 px-2 border border-stone-300 w-20 text-center">Metode</th>
+                <th className="py-2 px-2 border border-stone-300 w-20 text-center">Status</th>
+                <th className="py-2 px-2 border border-stone-300 w-28 text-right">Total Nilai</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-200">
+              {filteredSubmissions.length > 0 ? (
+                filteredSubmissions.map((sub, idx) => {
+                  const subTotal = sub.items.reduce((sum, i) => sum + i.total, 0);
+                  const displayStatus = sub.status || (sub.dibayarkanDengan === 'Cek/Transfer' ? 'Lunas' : 'Belum Lunas');
+                  return (
+                    <tr key={sub.id} className="align-top">
+                      <td className="py-2 px-2 border border-stone-200 text-center font-mono">{idx + 1}</td>
+                      <td className="py-2 px-2 border border-stone-200 whitespace-nowrap">{formatDateIndonesian(sub.tanggal)}</td>
+                      <td className="py-2 px-2 border border-stone-200 font-mono font-bold">{sub.kode}</td>
+                      <td className="py-2 px-2 border border-stone-200 font-bold">{sub.lokasi}</td>
+                      <td className="py-2 px-2 border border-stone-200">{sub.jenisPengajuan}</td>
+                      <td className="py-2 px-2 border border-stone-200 font-bold">{sub.dibayarkanKepada}</td>
+                      <td className="py-2 px-2 border border-stone-200 text-center font-mono">{sub.dibayarkanDengan}</td>
+                      <td className="py-2 px-2 border border-stone-200 text-center font-mono font-bold text-[9px]">{displayStatus}</td>
+                      <td className="py-2 px-2 border border-stone-200 text-right font-mono font-bold font-black text-stone-900 whitespace-nowrap">
+                        Rp {formatRupiah(subTotal)}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-stone-400">Tidak ada data transaksi yang cocok dengan kriteria filter.</td>
+                </tr>
+              )}
+              {/* Total Row */}
+              <tr className="bg-stone-50 font-bold text-stone-955 border-t-2 border-stone-900">
+                <td colSpan={8} className="py-2.5 px-2 text-right text-stone-850">SUM/TOTAL NILAI KELUAR:</td>
+                <td className="py-2.5 px-2 text-right font-mono text-xs font-black text-stone-955 whitespace-nowrap">
+                  Rp {formatRupiah(filteredSubmissions.reduce((sum, s) => sum + s.items.reduce((acc, i) => acc + i.total, 0), 0))}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Autograph / Tanda Tangan */}
+          <div className="pt-12 grid grid-cols-3 gap-6 text-center text-[11px] leading-normal pb-8">
+            <div className="space-y-12">
+              <p className="font-semibold text-stone-600">Dibuat Oleh,</p>
+              <div className="space-y-0.5">
+                <p className="font-bold underline text-stone-900 uppercase">{userProfile?.name || 'Staff Finance'}</p>
+                <p className="text-stone-400 text-[9px] font-mono">Keuangan / Kasir</p>
+              </div>
+            </div>
+            <div className="space-y-12">
+              <p className="font-semibold text-stone-600">Diperiksa Oleh,</p>
+              <div className="space-y-0.5">
+                <p className="font-bold underline text-stone-900 uppercase">ANDI DHIYA SALSABILA</p>
+                <p className="text-stone-400 text-[9px] font-mono">Direktur Keuangan</p>
+              </div>
+            </div>
+            <div className="space-y-12">
+              <p className="font-semibold text-stone-600">Disahkan Oleh,</p>
+              <div className="space-y-0.5">
+                <p className="font-bold underline text-stone-900 uppercase">ANDI NURSYAM HALID</p>
+                <p className="text-stone-400 text-[9px] font-mono">Direktur Utama</p>
+              </div>
+            </div>
           </div>
         </div>
       )}
