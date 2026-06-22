@@ -4,7 +4,8 @@ import {
   getStoredGoogleDriveToken, 
   googleDriveLogin, 
   saveSubmissionToFirestore,
-  getConnectedDrives
+  getConnectedDrives,
+  loadAllCompaniesFromFirestore
 } from '../firebase';
 import { 
   generateF1PdfBytes, 
@@ -309,16 +310,54 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
       return;
     }
 
-    if (!window.confirm("Apakah Anda yakin ingin merapikan folder Google Drive?\nTindakan ini akan memindahkan folder-folder pelengkap yang salah (seperti BRU, PPI, REFF, T03...) ke tempat Sampah Google Drive agar terlihat rapi.\n\nPASTIKAN Anda telah menjalankan 'Sinkronkan Ke Google Drive (1-Klik)' terlebih dahulu agar semua data penting Anda sudah berada di folder NMSA yang aman.")) {
-      return;
-    }
-
     setIsCleaning(true);
     setLogs([]);
     setErrorLog(null);
-    addLog(`[BERSIHKAN] Memulai proses merapikan folder di Google Drive...`);
+    addLog(`[BERSIHKAN] Sedang mendeteksi daftar perusahaan terdaftar di sistem...`);
 
     try {
+      // Collect registered companies from Firestore
+      const registeredCompanies = await loadAllCompaniesFromFirestore();
+      const protectedCompanyLowerNames = new Set<string>();
+
+      // Standard folders that are protected
+      protectedCompanyLowerNames.add('nmsa');
+      protectedCompanyLowerNames.add('petty cash');
+
+      // Add registered company IDs & codes to protected list
+      registeredCompanies.forEach((comp: any) => {
+        if (comp.id) protectedCompanyLowerNames.add(comp.id.trim().toLowerCase());
+        if (comp.code) protectedCompanyLowerNames.add(comp.code.trim().toLowerCase());
+      });
+
+      // Add company names parsed from submissions
+      submissions.forEach((sub) => {
+        const parsed = parseCompanyAndSequenceLocal(sub.kode);
+        if (parsed && parsed.company) {
+          protectedCompanyLowerNames.add(parsed.company.trim().toLowerCase());
+        }
+      });
+
+      const protectedListString = Array.from(protectedCompanyLowerNames)
+        .map(name => name.toUpperCase())
+        .sort()
+        .join(', ');
+
+      const confirmMessage = `Apakah Anda yakin ingin merapikan folder Google Drive?\n\n` +
+        `Tindakan ini akan memindahkan folder asing lainnya ke tempat Sampah Google Drive agar rapi.\n\n` +
+        `SISTEM MENDETEKSI PERUSAHAAN BERIKUT SEBAGAI DATA VALID & AMAN (TIDAK AKAN DIHAPUS):\n` +
+        `👉 ${protectedListString}\n\n` +
+        `Apakah Anda ingin melanjutkan?`;
+
+      if (!window.confirm(confirmMessage)) {
+        addLog(`[BERSIHKAN] Dibatalkan oleh pengguna.`);
+        setIsCleaning(false);
+        return;
+      }
+
+      addLog(`[BERSIHKAN] Memulai proses merapikan folder...`);
+      addLog(`[BERSIHKAN] Subfolder terlindungi: ${protectedListString}`);
+
       // 1. Find or get root ID / 'Voucher-APP' folder ID
       const queryRes = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=name='Voucher-APP'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id)`,
@@ -344,10 +383,10 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
       const listData = await listRes.json();
       const files = listData.files || [];
 
-      // Filter subfolders that are NOT 'nmsa', 'nmsa-backup', and NOT 'petty cash'
+      // Filter subfolders that are NOT in the protected list
       const messyFolders = files.filter((f: any) => {
         const lowerName = f.name.trim().toLowerCase();
-        return lowerName !== 'nmsa' && lowerName !== 'petty cash';
+        return !protectedCompanyLowerNames.has(lowerName);
       });
 
       if (messyFolders.length === 0) {
@@ -379,7 +418,7 @@ export const DriveSyncMass: React.FC<DriveSyncMassProps> = ({ submissions, onUpd
       }
 
       addLog(`[BERSIHKAN] SELESAI UNTUK MERAPIKAN! Berhasil memindahkan ${cleanSuccess} folder berantakan ke Sampah Google Drive.`);
-      addLog(`[BERSIHKAN] Sekarang tampilan Google Drive Anda telah rapi dan hanya berisi folder utama: "NMSA" & "Petty Cash".`);
+      addLog(`[BERSIHKAN] Sekarang tampilan Google Drive Anda telah rapi dan hanya berisi folder utama: ${protectedListString}.`);
     } catch (err: any) {
       setErrorLog(err.message || 'Gagal merapikan folder.' );
       addLog(`[BERSIHKAN] Eror: ${err.message || err}`);
